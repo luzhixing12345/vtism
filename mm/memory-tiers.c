@@ -728,3 +728,124 @@ delete_obj:
 subsys_initcall(numa_init_sysfs);
 #endif /* CONFIG_SYSFS */
 #endif
+
+#ifdef CONFIG_VTISM
+
+unsigned int vtism_enable = 1;
+unsigned int vtism_sample_period = 199;
+unsigned int vtism_mode = 1;
+unsigned int vtism_ksampled_soft_cpu_quota = 30; // 3 %
+
+static ssize_t vtism_enable_show(struct kobject *kobj,
+               struct kobj_attribute *attr, char *buf)
+{
+    return sysfs_emit(buf, "%u\n", vtism_enable);
+}
+
+static ssize_t vtism_enable_store(struct kobject *kobj,
+               struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    int ret;
+    ret = kstrtouint(buf, 10, &vtism_enable);
+    if (ret < 0)
+        return ret;
+    return count;
+}
+
+static struct kobj_attribute vtism_enable_attr =
+    __ATTR_RW(vtism_enable);
+
+static ssize_t vtism_sample_period_show(struct kobject *kobj,
+               struct kobj_attribute *attr, char *buf)
+{
+    return sysfs_emit(buf, "%u\n", vtism_sample_period);
+}
+
+static ssize_t vtism_sample_period_store(struct kobject *kobj,
+               struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    int ret;
+    ret = kstrtouint(buf, 10, &vtism_sample_period);
+    if (ret < 0)
+        return ret;
+    return count;
+}
+
+static struct kobj_attribute vtism_sample_period_attr =
+    __ATTR_RW(vtism_sample_period);
+
+static ssize_t vtism_mode_show(struct kobject *kobj,
+               struct kobj_attribute *attr, char *buf)
+{
+    return sysfs_emit(buf, "%u\n", vtism_mode);
+}
+
+static ssize_t vtism_mode_store(struct kobject *kobj,
+               struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    int ret;
+    ret = kstrtouint(buf, 10, &vtism_mode);
+    if (ret < 0)
+        return ret;
+    return count;
+}
+
+static struct kobj_attribute vtism_mode_attr =
+    __ATTR_RW(vtism_mode);
+
+static ssize_t vtism_ksampled_soft_cpu_quota_show(struct kobject *kobj,
+               struct kobj_attribute *attr, char *buf)
+{
+    return sysfs_emit(buf, "%u\n", vtism_ksampled_soft_cpu_quota);
+}
+
+static ssize_t vtism_ksampled_soft_cpu_quota_store(struct kobject *kobj,
+               struct kobj_attribute *attr, const char *buf, size_t count)
+{
+    int ret;
+    ret = kstrtouint(buf, 10, &vtism_ksampled_soft_cpu_quota);
+    if (ret < 0)
+        return ret;
+    return count;
+}
+
+static struct kobj_attribute vtism_ksampled_soft_cpu_quota_attr =
+    __ATTR_RW(vtism_ksampled_soft_cpu_quota);
+
+static struct attribute *vtism_attrs[] = {
+    &vtism_enable_attr.attr,
+    &vtism_sample_period_attr.attr,
+    &vtism_mode_attr.attr,
+    &vtism_ksampled_soft_cpu_quota_attr.attr,
+    NULL,
+};
+
+static const struct attribute_group vtism_attr_group = {
+    .attrs = vtism_attrs,
+};
+
+static int __init vtism_init(void)
+{
+	int err;
+	struct kobject *vtism_kobj;
+
+	vtism_kobj = kobject_create_and_add("vtism", mm_kobj);
+	if (!vtism_kobj) {
+		pr_err("failed to create vtism kobject\n");
+		return -ENOMEM;
+	}
+	err = sysfs_create_group(vtism_kobj, &vtism_attr_group);
+	if (err) {
+		pr_err("failed to register vtism group\n");
+		goto delete_obj;
+	}
+	return 0;
+
+delete_obj:
+	kobject_put(vtism_kobj);
+	return err;
+}
+
+subsys_initcall(vtism_init);
+
+#endif
