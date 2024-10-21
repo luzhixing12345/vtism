@@ -729,20 +729,20 @@ subsys_initcall(numa_init_sysfs);
 #endif /* CONFIG_SYSFS */
 #endif
 
-#ifdef CONFIG_VTISM
+#define VTISM_VM_PIDS_MAX CONFIG_VTISM_VM_PIDS_MAX
+
+unsigned int vtism_vm_pids[VTISM_VM_PIDS_MAX] = {0};
+unsigned int vtism_vm_pids_count = 0;
 
 unsigned int vtism_enable = 1;
-unsigned int vtism_sample_period = 199;
 unsigned int vtism_mode = 1;
-unsigned int vtism_ksampled_soft_cpu_quota = 30; // 3 %
 
-static ssize_t vtism_enable_show(struct kobject *kobj,
+static ssize_t enable_show(struct kobject *kobj,
                struct kobj_attribute *attr, char *buf)
 {
     return sysfs_emit(buf, "%u\n", vtism_enable);
 }
-
-static ssize_t vtism_enable_store(struct kobject *kobj,
+static ssize_t enable_store(struct kobject *kobj,
                struct kobj_attribute *attr, const char *buf, size_t count)
 {
     int ret;
@@ -751,36 +751,15 @@ static ssize_t vtism_enable_store(struct kobject *kobj,
         return ret;
     return count;
 }
-
 static struct kobj_attribute vtism_enable_attr =
-    __ATTR_RW(vtism_enable);
+    __ATTR_RW(enable);
 
-static ssize_t vtism_sample_period_show(struct kobject *kobj,
-               struct kobj_attribute *attr, char *buf)
-{
-    return sysfs_emit(buf, "%u\n", vtism_sample_period);
-}
-
-static ssize_t vtism_sample_period_store(struct kobject *kobj,
-               struct kobj_attribute *attr, const char *buf, size_t count)
-{
-    int ret;
-    ret = kstrtouint(buf, 10, &vtism_sample_period);
-    if (ret < 0)
-        return ret;
-    return count;
-}
-
-static struct kobj_attribute vtism_sample_period_attr =
-    __ATTR_RW(vtism_sample_period);
-
-static ssize_t vtism_mode_show(struct kobject *kobj,
+static ssize_t mode_show(struct kobject *kobj,
                struct kobj_attribute *attr, char *buf)
 {
     return sysfs_emit(buf, "%u\n", vtism_mode);
 }
-
-static ssize_t vtism_mode_store(struct kobject *kobj,
+static ssize_t mode_store(struct kobject *kobj,
                struct kobj_attribute *attr, const char *buf, size_t count)
 {
     int ret;
@@ -789,46 +768,53 @@ static ssize_t vtism_mode_store(struct kobject *kobj,
         return ret;
     return count;
 }
-
 static struct kobj_attribute vtism_mode_attr =
-    __ATTR_RW(vtism_mode);
+    __ATTR_RW(mode);
 
-static ssize_t vtism_ksampled_soft_cpu_quota_show(struct kobject *kobj,
-               struct kobj_attribute *attr, char *buf)
+static ssize_t vm_pids_show(struct kobject *kobj,
+                            struct kobj_attribute *attr, char *buf)
 {
-    return sysfs_emit(buf, "%u\n", vtism_ksampled_soft_cpu_quota);
+    ssize_t len = 0;
+    int i;
+
+    for (i = 0; i < VTISM_VM_PIDS_MAX; i++)
+        len += sysfs_emit_at(buf, len, "%d ", vtism_vm_pids[i]);
+    
+    len += sysfs_emit_at(buf, len, "\n"); // Add a newline at the end
+    return len;
 }
 
-static ssize_t vtism_ksampled_soft_cpu_quota_store(struct kobject *kobj,
-               struct kobj_attribute *attr, const char *buf, size_t count)
+static ssize_t vm_pids_store(struct kobject *kobj,
+                             struct kobj_attribute *attr, const char *buf, size_t count)
 {
     int ret;
-    ret = kstrtouint(buf, 10, &vtism_ksampled_soft_cpu_quota);
+
+    if (vtism_vm_pids_count >= VTISM_VM_PIDS_MAX)
+        return -EINVAL;
+
+    ret = kstrtouint(buf, 10, &vtism_vm_pids[vtism_vm_pids_count++]);
     if (ret < 0)
         return ret;
+    
     return count;
 }
 
-static struct kobj_attribute vtism_ksampled_soft_cpu_quota_attr =
-    __ATTR_RW(vtism_ksampled_soft_cpu_quota);
+static struct kobj_attribute vtism_vm_pids_attr =
+    __ATTR_RW(vm_pids);
 
 static struct attribute *vtism_attrs[] = {
     &vtism_enable_attr.attr,
-    &vtism_sample_period_attr.attr,
     &vtism_mode_attr.attr,
-    &vtism_ksampled_soft_cpu_quota_attr.attr,
+    &vtism_vm_pids_attr.attr,
     NULL,
 };
-
 static const struct attribute_group vtism_attr_group = {
     .attrs = vtism_attrs,
 };
-
 static int __init vtism_init(void)
 {
 	int err;
 	struct kobject *vtism_kobj;
-
 	vtism_kobj = kobject_create_and_add("vtism", mm_kobj);
 	if (!vtism_kobj) {
 		pr_err("failed to create vtism kobject\n");
@@ -840,12 +826,8 @@ static int __init vtism_init(void)
 		goto delete_obj;
 	}
 	return 0;
-
 delete_obj:
 	kobject_put(vtism_kobj);
 	return err;
 }
-
 subsys_initcall(vtism_init);
-
-#endif

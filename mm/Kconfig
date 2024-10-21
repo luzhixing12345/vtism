@@ -1259,16 +1259,13 @@ config LOCK_MM_AND_FIND_VMA
 	depends on !STACK_GROWSUP
 
 
-config VTISM
-	bool "vituralized tiered memory management"
-	depends on MIGRATION
-	help
-	  Enable memory access sampling and dynamic placement for
-	  tiered memory systems (DRAM + NVM). This optimizes the system
-	  performance in tiered memory systems by coordinating transparent
-	  hugepage support with tiered memory management.
-
-	  If in doubt, say N.
+config VTISM_VM_PIDS_MAX
+    int "Maximum number of VM PIDs"
+    default 16
+    depends on MIGRATION && HOTPLUG_CPU
+    help
+        Set the maximum number of VM PIDs that can be handled by the vtism module.
+        This value determines the size of the vtism_vm_pids array.
 
 source "mm/damon/Kconfig"
 
