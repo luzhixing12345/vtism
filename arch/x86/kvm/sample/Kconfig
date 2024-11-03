@@ -1,0 +1,6 @@
+
+config KVM_EPT_SAMPLE_DRIVER
+    tristate "KVM EPT Sample Driver"
+    depends on KVM_EPT_SAMPLE
+    help
+      This is a sample KVM EPT driver for x86 platforms.

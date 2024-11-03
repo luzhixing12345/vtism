@@ -87,6 +87,12 @@ config KVM_INTEL
 	  To compile this as a module, choose M here: the module
 	  will be called kvm-intel.
 
+config KVM_EPT_SAMPLE
+    bool "KVM EPT memory access sample support"
+    depends on KVM && KVM_INTEL && X86_64
+    help
+       Provides support for memory access sample of a KVM instance based on VT-x.
+
 config X86_SGX_KVM
 	bool "Software Guard eXtensions (SGX) Virtualization"
 	depends on X86_SGX && KVM_INTEL
@@ -153,5 +159,7 @@ config KVM_PROVE_MMU
 
 config KVM_EXTERNAL_WRITE_TRACKING
 	bool
+
+source "arch/x86/kvm/sample/Kconfig"
 
 endif # VIRTUALIZATION

@@ -808,6 +808,11 @@ struct kvm {
 	struct notifier_block pm_notifier;
 #endif
 	char stats_id[KVM_STATS_NAME_SIZE];
+
+#ifdef CONFIG_KVM_EPT_SAMPLE
+    int (*on_ept_sample)(struct kvm* kvm, unsigned long gpa, unsigned long code);
+    void* ept_sample_privdata;
+#endif
 };
 
 #define kvm_err(fmt, ...) \

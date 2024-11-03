@@ -5740,7 +5740,18 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 	gpa_t gpa;
 	u64 error_code;
 
+#ifdef CONFIG_KVM_EPT_SAMPLE
+    struct kvm* kvm = vcpu->kvm;
+    typeof(kvm->on_ept_sample) on_ept_sample = kvm->on_ept_sample;
+    gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
+#endif
+
 	exit_qualification = vmx_get_exit_qual(vcpu);
+
+#ifdef CONFIG_KVM_EPT_SAMPLE
+    if(on_ept_sample && on_ept_sample(kvm, (unsigned long)gpa, exit_qualification))
+        return 1;
+#endif
 
 	/*
 	 * EPT violation happened while executing iret from NMI,
@@ -5753,7 +5764,9 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 			(exit_qualification & INTR_INFO_UNBLOCK_NMI))
 		vmcs_set_bits(GUEST_INTERRUPTIBILITY_INFO, GUEST_INTR_STATE_NMI);
 
-	gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
+#ifndef CONFIG_KVM_EPT_SAMPLE
+    gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
+#endif
 	trace_kvm_page_fault(vcpu, gpa, exit_qualification);
 
 	/* Is it a read fault? */
@@ -6181,7 +6194,7 @@ static void vmx_flush_pml_buffer(struct kvm_vcpu *vcpu)
 		pml_idx = 0;
 	else
 		pml_idx++;
-
+    pr_info("pml_idx=%d\n", pml_idx);
 	pml_buf = page_address(vmx->pml_pg);
 	for (; pml_idx < PML_ENTITY_NUM; pml_idx++) {
 		u64 gpa;
@@ -8546,6 +8559,7 @@ static __init int hardware_setup(void)
 	if (!enable_ept || !enable_ept_ad_bits || !cpu_has_vmx_pml())
 		enable_pml = 0;
 
+    pr_info("enable_pml=%d\n", enable_pml);
 	if (!enable_pml)
 		vmx_x86_ops.cpu_dirty_log_size = 0;
 
