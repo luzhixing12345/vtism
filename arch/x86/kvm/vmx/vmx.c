@@ -5740,16 +5740,13 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 	gpa_t gpa;
 	u64 error_code;
 
-#ifdef CONFIG_KVM_EPT_SAMPLE
-    struct kvm* kvm = vcpu->kvm;
-    typeof(kvm->on_ept_sample) on_ept_sample = kvm->on_ept_sample;
-    gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
-#endif
-
 	exit_qualification = vmx_get_exit_qual(vcpu);
 
 #ifdef CONFIG_KVM_EPT_SAMPLE
-    if(on_ept_sample && on_ept_sample(kvm, (unsigned long)gpa, exit_qualification))
+    struct kvm* kvm = vcpu->kvm;
+    typeof(kvm->ept_sample_handler) ept_sample_handler = kvm->ept_sample_handler;
+    gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
+    if(ept_sample_handler && ept_sample_handler(kvm, (unsigned long)gpa, exit_qualification))
         return 1;
 #endif
 

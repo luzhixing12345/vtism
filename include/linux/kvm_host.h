@@ -810,7 +810,7 @@ struct kvm {
 	char stats_id[KVM_STATS_NAME_SIZE];
 
 #ifdef CONFIG_KVM_EPT_SAMPLE
-    int (*on_ept_sample)(struct kvm* kvm, unsigned long gpa, unsigned long code);
+    int (*ept_sample_handler)(struct kvm* kvm, unsigned long gpa, unsigned long code);
     void* ept_sample_privdata;
 #endif
 };

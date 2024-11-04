@@ -160,6 +160,4 @@ config KVM_PROVE_MMU
 config KVM_EXTERNAL_WRITE_TRACKING
 	bool
 
-source "arch/x86/kvm/sample/Kconfig"
-
 endif # VIRTUALIZATION
