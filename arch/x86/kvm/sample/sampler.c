@@ -7,16 +7,20 @@
 #define INTERVAL_DELTA(hz_delta) ((hz_delta) / 1000)
 #define INIT_INTERVAL(hz)        (1000 * HZ / (hz))
 
-static int get_kvm_by_vpid(pid_t pid, struct kvm **kvmp) {
+static int get_kvm_by_vpid(pid_t nr, struct kvm **kvmp) {
+    struct pid *pid;
     struct task_struct *task;
     struct files_struct *files;
     int fd, max_fds;
     struct kvm *kvm = NULL;
     rcu_read_lock();
-    task = pid ? find_task_by_vpid(pid) : current;
-    if (!task) {
+    if (!(pid = find_vpid(nr))) {
         rcu_read_unlock();
-        return -ESRCH;
+        ERROR1(-ESRCH, "no such process whose pid = %d", nr);
+    }
+    if (!(task = pid_task(pid, PIDTYPE_PID))) {
+        rcu_read_unlock();
+        ERROR1(-ESRCH, "no such process whose pid = %d", nr);
     }
     files = task->files;
     max_fds = files_fdtable(files)->max_fds;
@@ -38,7 +42,7 @@ static int get_kvm_by_vpid(pid_t pid, struct kvm **kvmp) {
     }
     rcu_read_unlock();
     if (!kvm)
-        ERROR1(-EINVAL, "process (pid = %d) has no kvm", pid);
+        ERROR1(-EINVAL, "process (pid = %d) has no kvm", nr);
     (*kvmp) = kvm;
     return 0;
 }
@@ -147,11 +151,11 @@ static void set_landmine_on_ept(struct timer_list *timer) {
 
 /**
  * @brief callback hook to handle ept violation in struct kvm
- * 
- * @param kvm 
- * @param gpa 
- * @param code 
- * @return int 
+ *
+ * @param kvm
+ * @param gpa
+ * @param code
+ * @return int
  */
 static int ept_sample_handler(struct kvm *kvm, unsigned long gpa, unsigned long code) {
     struct sampler *sampler = kvm->ept_sample_privdata;
@@ -197,7 +201,7 @@ int sampler_init(struct sampler *sampler, pid_t pid, void (*func_on_sample)(unsi
     wmb();
     sampler->prot_mask = EPT_PROT_ALL;
     sampler->hz = 0;
-    init_timer_key(&(sampler->timer), set_landmine_on_ept, 0, NULL, NULL);
+    timer_setup(&sampler->timer, set_landmine_on_ept, 0);
     sampler->privdata = privdata;
     wmb();
     assert(!kvm->ept_sample_privdata);

@@ -5,9 +5,6 @@
 #include "common.h"
 #include "interact.h"
 
-#define MODULE_NAME "kvm_ept_sample"
-#define MODULE_PROT 0666
-
 static struct proc_dir_entry *proc_entry;
 
 static struct proc_ops fops = {
@@ -24,14 +21,14 @@ static int __init init(void) {
         return -EIO;
     }
 
-    pr_info("Created /proc/%s\n", MODULE_NAME);
+    INFO("Created /proc/%s\n", MODULE_NAME);
     return 0;
 }
 
 static void __exit cleanup(void) {
     if (proc_entry)
         remove_proc_entry(MODULE_NAME, NULL);
-    pr_info("Removed /proc/%s\n", MODULE_NAME);
+    INFO("Removed /proc/%s\n", MODULE_NAME);
 }
 
 module_init(init);

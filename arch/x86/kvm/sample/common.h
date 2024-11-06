@@ -1,6 +1,11 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#define MODULE_NAME    "kvm_ept_sample"
+#define MODULE_PROT    0666
+
+#define INFO(fmt, ...) pr_info(MODULE_NAME ": " fmt, ##__VA_ARGS__)
+
 #ifndef __KERNEL__
 
 #ifdef NO_ASSERT

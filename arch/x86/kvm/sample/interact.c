@@ -30,15 +30,16 @@ int interact_open(struct inode *inode, struct file *file) {
     assert(!interact->sampler.privdata);
     assert(!file->private_data);
     file->private_data = interact;
+    INFO("Opened /proc/%s\n", MODULE_NAME);
     return 0;
 }
 
 /**
  * @brief handle ept sample to human readable format
- * 
- * @param gpa 
- * @param xwr 
- * @param privdata 
+ *
+ * @param gpa
+ * @param xwr
+ * @param privdata
  */
 static void handle_ept_sample(unsigned long gpa, int xwr, void *privdata) {
     struct interact *interact = privdata;
@@ -92,25 +93,35 @@ static int handle_cmd_get_memslots(struct interact *interact, struct interact_ge
     if (!interact->sampler.privdata)
         ERROR0(-EINVAL, "this fd has not been inited yet");
 
-    slots = kvm_memslots(interact->sampler.kvm);
-    if (!slots || kvm_memslots_empty(slots))
-        return -EINVAL;
     // slot_count = kvm_memslots->used_slots;
     if (copy_from_user(&user_memslots, &(param->memslots), sizeof(void *)))
         ERROR1(-EIO, "copy_from_user(..., %p, sizeof(void*)) failed", &(param->memslots));
 
+    int count = 0;
+    int capacity;
+    if (get_user(capacity, &(param->capacity)))
+        ERROR1(-EIO, "get_user(..., %p) failed", &(param->capacity));
+
+    slots = kvm_memslots(interact->sampler.kvm);
+    if (!slots || kvm_memslots_empty(slots))
+        return -EINVAL;
     kvm_for_each_memslot(ms, bkt, slots) {
-        struct interact_memslot *__user dst = user_memslots + bkt;
+        if (count >= capacity)
+            break;
+        struct interact_memslot *__user dst = user_memslots + count;
         if (put_user(ms->base_gfn << PAGE_SHIFT, &(dst->gpa)))
             ERROR1(-EIO, "put_user(..., %p) failed", &(dst->gpa));
         if (put_user(ms->userspace_addr, &(dst->hva)))
             ERROR1(-EIO, "put_user(..., %p) failed", &(dst->hva));
         if (put_user(ms->npages, &(dst->page_count)))
             ERROR1(-EIO, "put_user(..., %p) failed", &(dst->page_count));
+        count++;
     }
-
-    if (put_user(bkt, &(param->count)))
+    
+    INFO("count = %d\n", count);
+    if (put_user(count, &(param->count)))
         ERROR1(-EIO, "put_user(..., %p) failed", &(param->count));
+
     return 0;
 }
 
@@ -188,5 +199,6 @@ int interact_release(struct inode *inode, struct file *file) {
     queue_deinit(&(interact->queue), NULL);
     kfree(interact);
     file->private_data = NULL;
+    INFO("Release /proc/%s\n", MODULE_NAME);
     return 0;
 }
