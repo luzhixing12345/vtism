@@ -1,85 +1,106 @@
-#include <linux/init.h>
 #include <linux/module.h>
-#include <linux/kthread.h>
-#include <linux/sched.h>
-#include <linux/mm.h>
-#include <linux/highmem.h>
-#include <linux/pid.h>
-#include <linux/delay.h> // for ssleep
-#include <asm/pgtable.h>
+#include <linux/fs.h>
+#include <linux/cdev.h>
+#include <linux/device.h>
+#include <linux/uaccess.h>
+#include <linux/err.h>
 
-static int pid = 0;
-module_param_named(pid, pid, int, 0644);
+#include "common.h"
+#include "workqueue.h"
+#include "vtism.h"
 
-static struct task_struct *scan_thread;
+static dev_t dev_number;
+static struct cdev vtism_cdev;
+static struct class *vtism_class;
 
-// 内核线程函数
-static int scan_page_tables(void *data)
+// 文件操作结构体
+static struct file_operations vtism_fops = {
+	.owner = THIS_MODULE,
+	.open = vtism_open,
+	.release = vtism_release,
+	.unlocked_ioctl = vtism_ioctl,
+};
+
+static int init_interface(void)
 {
-	struct task_struct *task;
-	struct mm_struct *mm;
-	pgd_t *pgd;
+	int ret;
 
-	printk(KERN_INFO "Kernel thread started\n");
-
-	// 主循环，直到线程被停止
-	while (!kthread_should_stop()) {
-		// 获取目标进程的 task_struct
-		rcu_read_lock();
-		task = pid_task(find_vpid(pid), PIDTYPE_PID);
-		if (!task) {
-			printk(KERN_ERR "Failed to find task with PID %d\n",
-			       pid);
-			rcu_read_unlock();
-			break;
-		}
-		mm = task->mm;
-		if (!mm) {
-			printk(KERN_ERR "Task has no mm_struct\n");
-			rcu_read_unlock();
-			break;
-		}
-		rcu_read_unlock();
-
-		// 遍历页表
-		down_read(&mm->mmap_lock); // 锁定内存映射
-		pgd = mm->pgd;
-		pr_info("pgd: %p\n", pgd);
-		// 这里需要实现对 PUD, PMD, PTE 的递归遍历
-		// 并检查 A/D 位
-		up_read(&mm->mmap_lock);
-
-		// 每次扫描后休眠 5 秒
-		ssleep(5);
+	// 分配设备号
+	ret = alloc_chrdev_region(&dev_number, 0, 1, DEVICE_NAME);
+	if (ret < 0) {
+		ERR("Failed to allocate device number\n");
+		return ret;
 	}
 
-	printk(KERN_INFO "Kernel thread stopping\n");
+	// 初始化字符设备
+	cdev_init(&vtism_cdev, &vtism_fops);
+	vtism_cdev.owner = THIS_MODULE;
+	ret = cdev_add(&vtism_cdev, dev_number, 1);
+	if (ret < 0) {
+		unregister_chrdev_region(dev_number, 1);
+		ERR("Failed to add character device\n");
+		return ret;
+	}
+
+	// 创建类
+	vtism_class = class_create(DEVICE_NAME);
+	if (IS_ERR(vtism_class)) {
+		ret = PTR_ERR(vtism_class);
+		cdev_del(&vtism_cdev);
+		unregister_chrdev_region(dev_number, 1);
+		ERR("Failed to create device class\n");
+		return ret;
+	}
+
+	// 创建设备节点
+	if (!device_create(vtism_class, NULL, dev_number, NULL, DEVICE_NAME)) {
+		class_destroy(vtism_class);
+		cdev_del(&vtism_cdev);
+		unregister_chrdev_region(dev_number, 1);
+		ERR("Failed to create device\n");
+		return -ENOMEM;
+	}
+
+	INFO("Device created successfully /dev/%s\n", DEVICE_NAME);
 	return 0;
 }
 
-static int __init my_module_init(void)
+static void destroy_interface(void)
 {
-	printk(KERN_INFO "Initializing page table scanner module\n");
-	scan_thread = kthread_run(scan_page_tables, NULL, "page_table_scanner");
-	if (IS_ERR(scan_thread)) {
-		printk(KERN_ERR "Failed to create kernel thread\n");
-		return PTR_ERR(scan_thread);
+	if (vtism_class) {
+		device_destroy(vtism_class, dev_number);
+		class_destroy(vtism_class);
 	}
+	cdev_del(&vtism_cdev);
+	unregister_chrdev_region(dev_number, 1);
+}
+
+// 初始化模块
+static int __init vtism_init(void)
+{
+	int ret;
+
+    // create /dev/vtism_migrate interface for async page migration
+	ret = init_interface();
+	if (ret < 0)
+		return ret;
+
+    wq = alloc_workqueue("async_promote", WQ_UNBOUND, 1);
+
+	INFO("module loaded successfully\n");
 	return 0;
 }
 
-static void __exit my_module_exit(void)
+// 清理模块
+static void __exit vtism_exit(void)
 {
-	if (scan_thread) {
-		kthread_stop(scan_thread);
-		printk(KERN_INFO "Kernel thread stopped\n");
-	}
-	printk(KERN_INFO "Page table scanner module exited\n");
+	destroy_interface();
+	INFO("module removed\n");
 }
 
-module_init(my_module_init);
-module_exit(my_module_exit);
+module_init(vtism_init);
+module_exit(vtism_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Your Name");
-MODULE_DESCRIPTION("A module to scan page tables for Accessed/Dirty bits");
+MODULE_AUTHOR("kamilu");
+MODULE_DESCRIPTION("Character device for asynchronous page migration");
