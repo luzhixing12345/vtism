@@ -6191,7 +6191,7 @@ static void vmx_flush_pml_buffer(struct kvm_vcpu *vcpu)
 		pml_idx = 0;
 	else
 		pml_idx++;
-    pr_info("pml_idx=%d\n", pml_idx);
+
 	pml_buf = page_address(vmx->pml_pg);
 	for (; pml_idx < PML_ENTITY_NUM; pml_idx++) {
 		u64 gpa;

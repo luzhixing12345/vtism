@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
+#include <linux/export.h>
 #include <linux/pagewalk.h>
 #include <linux/highmem.h>
 #include <linux/sched.h>
@@ -599,6 +600,8 @@ int walk_page_vma(struct vm_area_struct *vma, const struct mm_walk_ops *ops,
 	process_vma_walk_lock(vma, ops->walk_lock);
 	return __walk_page_range(vma->vm_start, vma->vm_end, &walk);
 }
+
+EXPORT_SYMBOL(walk_page_vma);
 
 /**
  * walk_page_mapping - walk all memory areas mapped into a struct address_space.
