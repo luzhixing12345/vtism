@@ -574,6 +574,40 @@ static inline void mmu_notifier_range_init_owner(
 	__young;							\
 })
 
+
+#define pudp_clear_young_notify(__vma, __address, __pudp)		\
+({									\
+	int __young;							\
+	struct vm_area_struct *___vma = __vma;				\
+	unsigned long ___address = __address;				\
+	__young = pudp_test_and_clear_young(___vma, ___address, __pudp);\
+	__young |= mmu_notifier_clear_young(___vma->vm_mm, ___address,	\
+					    ___address + PUD_SIZE);	\
+	__young;							\
+})
+
+#define p4dp_clear_young_notify(__vma, __address, __p4dp)		\
+({									\
+	int __young;							\
+	struct vm_area_struct *___vma = __vma;				\
+	unsigned long ___address = __address;				\
+	__young = p4dp_test_and_clear_young(___vma, ___address, __p4dp);\
+	__young |= mmu_notifier_clear_young(___vma->vm_mm, ___address,	\
+					    ___address + P4D_SIZE);	\
+	__young;							\
+})
+
+#define pgdp_clear_young_notify(__vma, __address, __pgdp)		\
+({									\
+	int __young;							\
+	struct vm_area_struct *___vma = __vma;				\
+	unsigned long ___address = __address;				\
+	__young = pgdp_test_and_clear_young(___vma, ___address, __pgdp);\
+	__young |= mmu_notifier_clear_young(___vma->vm_mm, ___address,	\
+					    ___address + PGDIR_SIZE);	\
+	__young;							\
+})
+
 /*
  * set_pte_at_notify() sets the pte _after_ running the notifier.
  * This is safe to start by updating the secondary MMUs, because the primary MMU

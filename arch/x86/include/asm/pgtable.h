@@ -169,6 +169,18 @@ static inline int pud_young(pud_t pud)
 	return pud_flags(pud) & _PAGE_ACCESSED;
 }
 
+#define p4d_young p4d_young
+static inline int p4d_young(p4d_t p4d)
+{
+	return p4d_flags(p4d) & _PAGE_ACCESSED;
+}
+
+#define pgd_young pgd_young
+static inline int pgd_young(pgd_t pgd)
+{
+	return pgd_flags(pgd) & _PAGE_ACCESSED;
+}
+
 static inline int pte_write(pte_t pte)
 {
 	/*
@@ -1339,7 +1351,10 @@ extern int pmdp_test_and_clear_young(struct vm_area_struct *vma,
 				     unsigned long addr, pmd_t *pmdp);
 extern int pudp_test_and_clear_young(struct vm_area_struct *vma,
 				     unsigned long addr, pud_t *pudp);
-
+extern int p4dp_test_and_clear_young(struct vm_area_struct *vma,
+				     unsigned long addr, p4d_t *p4dp);
+extern int pgdp_test_and_clear_young(struct vm_area_struct *vma,
+				     unsigned long addr, pgd_t *pgdp);
 #define __HAVE_ARCH_PMDP_CLEAR_YOUNG_FLUSH
 extern int pmdp_clear_flush_young(struct vm_area_struct *vma,
 				  unsigned long address, pmd_t *pmdp);

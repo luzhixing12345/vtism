@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
+#include "linux/export.h"
 #include <linux/mm.h>
 #include <linux/gfp.h>
 #include <linux/hugetlb.h>
@@ -562,6 +563,7 @@ int ptep_test_and_clear_young(struct vm_area_struct *vma,
 
 	return ret;
 }
+EXPORT_SYMBOL(ptep_test_and_clear_young);
 
 #if defined(CONFIG_TRANSPARENT_HUGEPAGE) || defined(CONFIG_ARCH_HAS_NONLEAF_PMD_YOUNG)
 int pmdp_test_and_clear_young(struct vm_area_struct *vma,
@@ -575,6 +577,7 @@ int pmdp_test_and_clear_young(struct vm_area_struct *vma,
 
 	return ret;
 }
+EXPORT_SYMBOL(pmdp_test_and_clear_young);
 #endif
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
@@ -589,6 +592,35 @@ int pudp_test_and_clear_young(struct vm_area_struct *vma,
 
 	return ret;
 }
+EXPORT_SYMBOL(pudp_test_and_clear_young);
+#endif
+
+#ifdef CONFIG_ARCH_HAS_NONLEAF_PMD_YOUNG
+int p4dp_test_and_clear_young(struct vm_area_struct *vma,
+			      unsigned long addr, p4d_t *p4dp)
+{
+	int ret = 0;
+
+	if (p4d_young(*p4dp))
+		ret = test_and_clear_bit(_PAGE_BIT_ACCESSED,
+					 (unsigned long *)p4dp);
+
+	return ret;
+}
+EXPORT_SYMBOL(p4dp_test_and_clear_young);
+
+int pgdp_test_and_clear_young(struct vm_area_struct *vma,
+			      unsigned long addr, pgd_t *pgdp)
+{
+	int ret = 0;
+
+	if (pgd_young(*pgdp))
+		ret = test_and_clear_bit(_PAGE_BIT_ACCESSED,
+					 (unsigned long *)pgdp);
+
+	return ret;
+}
+EXPORT_SYMBOL(pgdp_test_and_clear_young);
 #endif
 
 int ptep_clear_flush_young(struct vm_area_struct *vma,
