@@ -5739,16 +5739,8 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 	unsigned long exit_qualification;
 	gpa_t gpa;
 	u64 error_code;
-
+    
 	exit_qualification = vmx_get_exit_qual(vcpu);
-
-#ifdef CONFIG_KVM_EPT_SAMPLE
-    struct kvm* kvm = vcpu->kvm;
-    typeof(kvm->ept_sample_handler) ept_sample_handler = kvm->ept_sample_handler;
-    gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
-    if(ept_sample_handler && ept_sample_handler(kvm, (unsigned long)gpa, exit_qualification))
-        return 1;
-#endif
 
 	/*
 	 * EPT violation happened while executing iret from NMI,
@@ -5761,9 +5753,7 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 			(exit_qualification & INTR_INFO_UNBLOCK_NMI))
 		vmcs_set_bits(GUEST_INTERRUPTIBILITY_INFO, GUEST_INTR_STATE_NMI);
 
-#ifndef CONFIG_KVM_EPT_SAMPLE
     gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
-#endif
 	trace_kvm_page_fault(vcpu, gpa, exit_qualification);
 
 	/* Is it a read fault? */
