@@ -15,7 +15,6 @@ CONFIG_KVM_EPT_SAMPLE=y
 
 autofs
 
-EXPORT_SYMBOL(follow_page); mm/gup.c
 EXPORT_SYMBOL(__mmu_notifier_clear_young);
 EXPORT_SYMBOL(walk_page_vma_opt);
 EXPORT_SYMBOL(ptep_test_and_clear_young);
