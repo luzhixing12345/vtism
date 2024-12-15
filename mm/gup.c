@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
+#include "linux/export.h"
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/err.h>
@@ -854,6 +855,7 @@ struct page *follow_page(struct vm_area_struct *vma, unsigned long address,
 	return page;
 }
 
+EXPORT_SYMBOL(follow_page);
 
 static int get_gate_page(struct mm_struct *mm, unsigned long address,
 		unsigned int gup_flags, struct vm_area_struct **vma,

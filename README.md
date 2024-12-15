@@ -8,12 +8,10 @@ kvm module built-in kernel
 enable damon
 
 remove kernel debug info
- 
-```bash
-CONFIG_KVM_EPT_SAMPLE=y
-```
 
 autofs
+
+e1000 built-in(for qemu ssh)
 
 EXPORT_SYMBOL(__mmu_notifier_clear_young);
 EXPORT_SYMBOL(walk_page_vma_opt);
