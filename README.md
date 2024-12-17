@@ -20,3 +20,7 @@ EXPORT_SYMBOL(pmdp_test_and_clear_young);
 EXPORT_SYMBOL(pudp_test_and_clear_young);
 EXPORT_SYMBOL(p4dp_test_and_clear_young);
 EXPORT_SYMBOL(pgdp_test_and_clear_young);
+EXPORT_SYMBOL(follow_page);
+EXPORT_SYMBOL(isolate_lru_page);
+EXPORT_SYMBOL(putback_lru_page);
+EXPORT_SYMBOL(try_to_unmap);

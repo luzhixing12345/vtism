@@ -1,7 +1,7 @@
 
 
 
-#include "vtism.h"
+#include "vtismctl.h"
 
 // 文件操作函数
 int vtism_open(struct inode *inode, struct file *file)

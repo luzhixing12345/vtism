@@ -7,7 +7,9 @@
 
 #include "common.h"
 #include "workqueue.h"
-#include "vtism.h"
+#include "vtismctl.h"
+#include "page_classify.h"
+#include "page_demotion.h"
 
 static dev_t dev_number;
 static struct cdev vtism_cdev;
@@ -81,21 +83,31 @@ static int __init vtism_init(void)
 	int ret;
 
     // create /dev/vtism_migrate interface for async page migration
-	ret = init_interface();
-	if (ret < 0)
-		return ret;
+	// ret = init_interface();
+	// if (ret < 0)
+	// 	return ret;
+
+    ret = page_classify_init();
+    if (ret < 0)
+        return ret;
+
+    ret = page_demotion_init();
+    if (ret < 0)
+        return ret;
 
     wq = alloc_workqueue("async_promote", WQ_UNBOUND, 1);
 
-	INFO("module loaded successfully\n");
+	INFO("vtism module loaded successfully\n");
 	return 0;
 }
 
 // 清理模块
 static void __exit vtism_exit(void)
 {
-	destroy_interface();
-	INFO("module removed\n");
+	// destroy_interface();
+    page_classify_exit();
+    page_demotion_exit();
+	INFO("vtism module removed\n");
 }
 
 module_init(vtism_init);

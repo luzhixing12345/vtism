@@ -6164,7 +6164,7 @@ static void vmx_destroy_pml_buffer(struct vcpu_vmx *vmx)
 	}
 }
 
-static void vmx_flush_pml_buffer(struct kvm_vcpu *vcpu)
+void vmx_flush_pml_buffer(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	u64 *pml_buf;
