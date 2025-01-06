@@ -1,5 +1,5 @@
 
-obj-m := vtism.o
+obj-y := vtism.o
 
 page_classify-objs := page_classify.o kvm.o
 page_migrate-objs := page_demotion.o

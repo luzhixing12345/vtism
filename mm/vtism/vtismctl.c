@@ -1,54 +1,140 @@
 
+#include <linux/kobject.h>
+#include <linux/lockdep.h>
+#include <linux/memory-tiers.h>
+#include <linux/memory.h>
+#include <linux/slab.h>
+#include <linux/sysfs.h>
 
+#include "common.h"
 
-#include "vtismctl.h"
+#define VTISM_VM_PIDS_MAX CONFIG_VTISM_VM_PIDS_MAX
 
-// 文件操作函数
-int vtism_open(struct inode *inode, struct file *file)
-{
-	if (!inode || !file) {
-		ERR("Invalid arguments to vtism_open\n");
-		return -EINVAL;
-	}
+unsigned int vtism_vm_pids[VTISM_VM_PIDS_MAX] = {0};
+unsigned int vtism_vm_pids_count = 0;
 
-	printk(KERN_INFO "Device opened\n");
-	return 0;
+unsigned int vtism_enable = 1;
+
+static ssize_t enable_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+    return sysfs_emit(buf, "%u\n", vtism_enable);
+}
+static ssize_t enable_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+    int ret;
+    ret = kstrtouint(buf, 10, &vtism_enable);
+    if (ret < 0)
+        return ret;
+    return count;
+}
+static struct kobj_attribute vtism_enable_attr = __ATTR_RW(enable);
+
+static ssize_t vm_pids_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+    ssize_t len = 0;
+    int i;
+
+    for (i = 0; i < VTISM_VM_PIDS_MAX; i++) len += sysfs_emit_at(buf, len, "%d ", vtism_vm_pids[i]);
+
+    len += sysfs_emit_at(buf, len, "\n");  // Add a newline at the end
+    return len;
 }
 
-int vtism_release(struct inode *inode, struct file *file)
-{
-	if (!inode || !file) {
-		ERR("Invalid arguments to vtism_release\n");
-		return -EINVAL;
-	}
+static ssize_t vm_pids_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+    int ret;
 
-	printk(KERN_INFO "Device closed\n");
-	return 0;
+    if (vtism_vm_pids_count >= VTISM_VM_PIDS_MAX)
+        return -EINVAL;
+
+    ret = kstrtouint(buf, 10, &vtism_vm_pids[vtism_vm_pids_count++]);
+    if (ret < 0)
+        return ret;
+
+    return count;
 }
 
-long vtism_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
-{
-	// 检查 file 指针
-	if (!file) {
-		ERR("Invalid file pointer in vtism_ioctl\n");
-		return -EINVAL;
-	}
+static struct kobj_attribute vtism_vm_pids_attr = __ATTR_RW(vm_pids);
 
-	// 处理异步页面迁移的命令
-	switch (cmd) {
-	// case YOUR_DEFINED_CMD:  // 替换为您定义的命令
-	// 	// 执行特定的页面迁移操作
-	// 	// 使用 copy_from_user 或 copy_to_user 进行用户空间访问，并检查返回值
-	// 	if (copy_from_user(...)) {
-	// 		ERR("Failed to copy data from user space\n");
-	// 		return -EFAULT;
-	// 	}
-	// 	break;
-	default:
-		ERR("Unknown IOCTL command: %u\n", cmd);
-		return -ENOTTY;  // 命令未实现
-	}
+static struct attribute *vtism_attrs[] = {
+    &vtism_enable_attr.attr,
+    &vtism_vm_pids_attr.attr,
+    NULL,
+};
+static const struct attribute_group vtism_attr_group = {
+    .attrs = vtism_attrs,
+};
 
-	printk(KERN_INFO "IOCTL called\n");
-	return 0;
+/*
+-----------------------
+        PCM
+-----------------------
+*/
+
+// intel pcm program runing in background
+static unsigned int pcm_interval = 1000;
+// static char pcm_bandwidth_buf[4096];
+
+static ssize_t pcm_interval_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+    return sysfs_emit(buf, "%u\n", pcm_interval);
 }
+static ssize_t pcm_interval_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+    int ret;
+    ret = kstrtouint(buf, 10, &pcm_interval);
+    if (ret < 0)
+        return ret;
+    return count;
+}
+
+static struct kobj_attribute vtism_pcm_interval = __ATTR_RW(pcm_interval);
+
+static ssize_t pcm_bandwidth_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+    return sysfs_emit(buf, "%u\n", pcm_interval);
+}
+static ssize_t pcm_bandwidth_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+    int ret;
+    ret = kstrtouint(buf, 10, &pcm_interval);
+    if (ret < 0)
+        return ret;
+    return count;
+}
+
+static struct kobj_attribute vtism_pcm_bandwidth = __ATTR_RW(pcm_bandwidth);
+
+static struct attribute *vtism_pcm_attrs[] = {
+    &vtism_pcm_interval.attr,
+    &vtism_pcm_bandwidth.attr,
+    NULL,
+};
+
+static const struct attribute_group pcm_attr_group = {
+    .attrs = vtism_pcm_attrs,
+};
+
+/*
+
+kernel system interface for vtism (/sys/kernel/mm/vtism)
+
+
+
+*/
+
+static int __init vtism_init(void) {
+    int err;
+    struct kobject *vtism_kobj, *pcm;
+    vtism_kobj = kobject_create_and_add("vtism", mm_kobj);
+    if (!vtism_kobj) {
+        pr_err("failed to create vtism kobject\n");
+        return -ENOMEM;
+    }
+    err = sysfs_create_group(vtism_kobj, &vtism_attr_group);
+    if (err) {
+        pr_err("failed to register vtism group\n");
+        goto delete_obj;
+    }
+
+    pcm = kobject_create_and_add("pcm", vtism_kobj);
+    err = sysfs_create_group(pcm, &pcm_attr_group);
+
+    return 0;
+delete_obj:
+    kobject_put(vtism_kobj);
+    return err;
+}
+subsys_initcall(vtism_init);

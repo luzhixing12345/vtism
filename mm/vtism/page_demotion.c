@@ -23,7 +23,6 @@
 #define LOW_WATERMARK    100   // 冷页面迁移阈值
 
 static struct hrtimer demotion_timer;
-atomic_t is_demoting_ongoing = ATOMIC_INIT(0);
 
 static bool pgdat_free_space_enough(struct pglist_data *pgdat) {
     int z;
@@ -45,36 +44,32 @@ static bool pgdat_free_space_enough(struct pglist_data *pgdat) {
 static enum hrtimer_restart demotion_scan(struct hrtimer *timer) {
     int nid;
 
-    // if demotion is ongoing, restart the timer
-    if (atomic_read(&is_demoting_ongoing))
-        return HRTIMER_RESTART;
-
     // 遍历所有 NUMA 节点
     for_each_online_node(nid) {
-        struct pglist_data *pgdat = NODE_DATA(nid);
-        unsigned long total_pages = 0;
-        unsigned long free_pages = 0;
+        // struct pglist_data *pgdat = NODE_DATA(nid);
+        // unsigned long total_pages = 0;
+        // unsigned long free_pages = 0;
 
-        // 遍历该节点的所有 zones
-        for (int zid = 0; zid < MAX_NR_ZONES; zid++) {
-            struct zone *zone = pgdat->node_zones + zid;
+        // // 遍历该节点的所有 zones
+        // for (int zid = 0; zid < MAX_NR_ZONES; zid++) {
+        //     struct zone *zone = pgdat->node_zones + zid;
 
-            // 跳过无效或未初始化的 zone
-            if (!populated_zone(zone))
-                continue;
+        //     // 跳过无效或未初始化的 zone
+        //     if (!populated_zone(zone))
+        //         continue;
 
-            // 获取 total 和 free 页面数
-            total_pages += atomic_long_read(&zone->managed_pages);
-            free_pages += zone_page_state(zone, NR_FREE_PAGES);
-        }
+        //     // 获取 total 和 free 页面数
+        //     total_pages += atomic_long_read(&zone->managed_pages);
+        //     free_pages += zone_page_state(zone, NR_FREE_PAGES);
+        // }
 
-        // 打印节点信息
-        // INFO("Node %d: total = %lu KB, free = %lu KB\n",
-        //      nid, total_pages << (PAGE_SHIFT - 10), free_pages << (PAGE_SHIFT - 10));
-        unsigned long watermark = free_pages * 1000 / total_pages;
-        if (watermark < LOW_WATERMARK) {
-            // 进行冷页面迁移
-        }
+        // // 打印节点信息
+        // // INFO("Node %d: total = %lu KB, free = %lu KB\n",
+        // //      nid, total_pages << (PAGE_SHIFT - 10), free_pages << (PAGE_SHIFT - 10));
+        // unsigned long watermark = free_pages * 1000 / total_pages;
+        // if (watermark < LOW_WATERMARK) {
+        //     // 进行冷页面迁移
+        // }
     }
 
     // 重新启动定时器
@@ -100,8 +95,8 @@ void page_demotion_exit(void) {
 
 // 冷页面迁移逻辑 (示例)
 static void migrate_cold_pages(struct zone *zone) {
-    // 遍历 zone 内存页，并选择冷页面进行迁移
+    // 遍历 zone 内存页,并选择冷页面进行迁移
     // 实际实现需要结合页面引用计数等信息
-    // 迁移接口：migrate_pages()
+    // 迁移接口:migrate_pages()
     pr_info("Migrating cold pages in zone: %s\n", zone->name);
 }

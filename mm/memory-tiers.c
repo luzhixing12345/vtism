@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
+#include "linux/nodemask.h"
 #include <linux/slab.h>
 #include <linux/lockdep.h>
 #include <linux/sysfs.h>
@@ -282,6 +283,95 @@ void node_get_allowed_targets(pg_data_t *pgdat, nodemask_t *targets)
 	rcu_read_unlock();
 }
 
+static int get_node_free_ratio(int nid) {
+    struct pglist_data *pgdat = NODE_DATA(nid);
+    unsigned long total_pages = 0;
+    unsigned long free_pages = 0;
+
+    // 遍历该节点的所有 zones
+    for (int zid = 0; zid < MAX_NR_ZONES; zid++) {
+        struct zone *zone = pgdat->node_zones + zid;
+
+        // 跳过无效或未初始化的 zone
+        if (!populated_zone(zone))
+            continue;
+
+        // 获取 total 和 free 页面数
+        total_pages += atomic_long_read(&zone->managed_pages);
+        free_pages += zone_page_state(zone, NR_FREE_PAGES);
+    }
+
+    // 打印节点信息
+    // INFO("Node %d: total = %lu KB, free = %lu KB\n",
+    //      nid, total_pages << (PAGE_SHIFT - 10), free_pages << (PAGE_SHIFT - 10));
+    return free_pages * 1000 / total_pages;
+}
+
+/* If more than one node is allowed, check each target node's 
+- free/total memory ratio
+- memory type's adistance
+- memory type's migration cost
+- memory type's migration latency
+- memory type's migration bandwidth
+*/
+static int find_best_demotion_node(const nodemask_t *maskp) {
+    // int target_node = NUMA_NO_NODE;
+    int best_node = NUMA_NO_NODE;
+    // int distance = 0;
+    // int best_distance = 0;
+    int node;
+    for_each_node_mask(node, *maskp) {
+        int free_ratio = get_node_free_ratio(node);
+        int adistance = node_memory_types[node].memtype->adistance;
+        // int cost = node_memory_types[node].memtype->migration_cost;
+        // int latency = node_memory_types[node].memtype->migration_latency;
+        // int bandwidth = node_memory_types[node].memtype->migration_bandwidth;
+        // INFO("Node %d: free_ratio = %d, adistance = %d, cost = %d, latency = %d, bandwidth = %d\n",
+        //      node, free_ratio, adistance, cost, latency, bandwidth);
+        // if (free_ratio > 50) {
+        //     if (adistance > distance) {
+        //         target_node = node;
+        //         distance = adistance;
+        //     }
+        // }
+        // if (free_ratio > 50 && adistance > best_distance) {
+        //     best_node = node;
+        //     best_distance = adistance;
+        // }
+        pr_info("Node %d: free_ratio = %d, adistance = %d\n", node, free_ratio, adistance);
+    }
+    return best_node;
+}
+
+static int get_target_demotion_node(const nodemask_t *maskp) {
+#if defined(CONFIG_NUMA) && (MAX_NUMNODES > 1)
+	int w, bit;
+
+	w = nodes_weight(*maskp);
+	switch (w) {
+	case 0:
+		bit = NUMA_NO_NODE;
+		break;
+	case 1:
+        /* If only one node is allowed, demote to that node */
+		bit = first_node(*maskp);
+		break;
+	default:
+		// If more than one node is allowed, check each target node's 
+        // - free/total memory ratio
+        // - memory type's adistance
+        // - memory type's migration cost
+        // - memory type's migration latency
+        // - memory type's migration bandwidth
+        bit = find_best_demotion_node(maskp);
+		break;
+	}
+	return bit;
+#else
+	return 0;
+#endif
+}
+
 /**
  * next_demotion_node() - Get the next node in the demotion path
  * @node: The starting node to lookup the next node
@@ -322,6 +412,9 @@ int next_demotion_node(int node)
 	 * target node randomly seems better until now.
 	 */
 	target = node_random(&nd->preferred);
+    pr_info("node %d next_demotion_node: %d\n", node, target);
+    get_target_demotion_node(&nd->preferred);
+    
 	rcu_read_unlock();
 
 	return target;
@@ -349,6 +442,26 @@ static void disable_all_demotion_targets(void)
 	 * after state together.
 	 */
 	synchronize_rcu();
+}
+
+static void dump_demotion_targets(void)
+{
+	int node;
+
+	for_each_node_state(node, N_MEMORY) {
+		struct memory_tier *memtier = __node_get_memory_tier(node);
+		nodemask_t preferred = node_demotion[node].preferred;
+
+		if (!memtier)
+			continue;
+
+		if (nodes_empty(preferred))
+			pr_info("Demotion targets for Node %d: null\n", node);
+		else
+			pr_info("Demotion targets for Node %d: preferred: %*pbl, fallback: %*pbl\n",
+				node, nodemask_pr_args(&preferred),
+				nodemask_pr_args(&memtier->lower_tier_mask));
+	}
 }
 
 /*
@@ -390,7 +503,6 @@ static void establish_demotion_targets(void)
 		 * memtier nodelist.
 		 */
 		nodes_andnot(tier_nodes, node_states[N_MEMORY], tier_nodes);
-
 		/*
 		 * Find all the nodes in the memory tier node list of same best distance.
 		 * add them to the preferred mask. We randomly select between nodes
@@ -448,6 +560,7 @@ static void establish_demotion_targets(void)
 		nodes_andnot(lower_tier, lower_tier, tier_nodes);
 		memtier->lower_tier_mask = lower_tier;
 	}
+    dump_demotion_targets();
 }
 
 #else
@@ -728,106 +841,3 @@ delete_obj:
 subsys_initcall(numa_init_sysfs);
 #endif /* CONFIG_SYSFS */
 #endif
-
-#define VTISM_VM_PIDS_MAX CONFIG_VTISM_VM_PIDS_MAX
-
-unsigned int vtism_vm_pids[VTISM_VM_PIDS_MAX] = {0};
-unsigned int vtism_vm_pids_count = 0;
-
-unsigned int vtism_enable = 1;
-unsigned int vtism_mode = 1;
-
-static ssize_t enable_show(struct kobject *kobj,
-               struct kobj_attribute *attr, char *buf)
-{
-    return sysfs_emit(buf, "%u\n", vtism_enable);
-}
-static ssize_t enable_store(struct kobject *kobj,
-               struct kobj_attribute *attr, const char *buf, size_t count)
-{
-    int ret;
-    ret = kstrtouint(buf, 10, &vtism_enable);
-    if (ret < 0)
-        return ret;
-    return count;
-}
-static struct kobj_attribute vtism_enable_attr =
-    __ATTR_RW(enable);
-
-static ssize_t mode_show(struct kobject *kobj,
-               struct kobj_attribute *attr, char *buf)
-{
-    return sysfs_emit(buf, "%u\n", vtism_mode);
-}
-static ssize_t mode_store(struct kobject *kobj,
-               struct kobj_attribute *attr, const char *buf, size_t count)
-{
-    int ret;
-    ret = kstrtouint(buf, 10, &vtism_mode);
-    if (ret < 0)
-        return ret;
-    return count;
-}
-static struct kobj_attribute vtism_mode_attr =
-    __ATTR_RW(mode);
-
-static ssize_t vm_pids_show(struct kobject *kobj,
-                            struct kobj_attribute *attr, char *buf)
-{
-    ssize_t len = 0;
-    int i;
-
-    for (i = 0; i < VTISM_VM_PIDS_MAX; i++)
-        len += sysfs_emit_at(buf, len, "%d ", vtism_vm_pids[i]);
-    
-    len += sysfs_emit_at(buf, len, "\n"); // Add a newline at the end
-    return len;
-}
-
-static ssize_t vm_pids_store(struct kobject *kobj,
-                             struct kobj_attribute *attr, const char *buf, size_t count)
-{
-    int ret;
-
-    if (vtism_vm_pids_count >= VTISM_VM_PIDS_MAX)
-        return -EINVAL;
-
-    ret = kstrtouint(buf, 10, &vtism_vm_pids[vtism_vm_pids_count++]);
-    if (ret < 0)
-        return ret;
-    
-    return count;
-}
-
-static struct kobj_attribute vtism_vm_pids_attr =
-    __ATTR_RW(vm_pids);
-
-static struct attribute *vtism_attrs[] = {
-    &vtism_enable_attr.attr,
-    &vtism_mode_attr.attr,
-    &vtism_vm_pids_attr.attr,
-    NULL,
-};
-static const struct attribute_group vtism_attr_group = {
-    .attrs = vtism_attrs,
-};
-static int __init vtism_init(void)
-{
-	int err;
-	struct kobject *vtism_kobj;
-	vtism_kobj = kobject_create_and_add("vtism", mm_kobj);
-	if (!vtism_kobj) {
-		pr_err("failed to create vtism kobject\n");
-		return -ENOMEM;
-	}
-	err = sysfs_create_group(vtism_kobj, &vtism_attr_group);
-	if (err) {
-		pr_err("failed to register vtism group\n");
-		goto delete_obj;
-	}
-	return 0;
-delete_obj:
-	kobject_put(vtism_kobj);
-	return err;
-}
-subsys_initcall(vtism_init);
