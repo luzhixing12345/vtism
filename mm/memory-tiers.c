@@ -26,7 +26,7 @@ struct memory_tier {
 };
 
 struct demotion_nodes {
-	nodemask_t preferred;
+	nodemask_t target_demotion_nodes;
 };
 
 struct node_memory_type_map {
@@ -103,7 +103,7 @@ static int top_tier_adistance;
  * node_demotion[2].preferred = <empty>
  *
  */
-static struct demotion_nodes *node_demotion __read_mostly;
+struct demotion_nodes *node_demotion __read_mostly;
 #endif /* CONFIG_MIGRATION */
 
 static inline struct memory_tier *to_memory_tier(struct device *device)
@@ -242,27 +242,22 @@ static struct memory_tier *__node_get_memory_tier(int node)
 #ifdef CONFIG_MIGRATION
 bool node_is_toptier(int node)
 {
-	bool toptier;
 	pg_data_t *pgdat;
-	struct memory_tier *memtier;
 
 	pgdat = NODE_DATA(node);
 	if (!pgdat)
 		return false;
 
-	rcu_read_lock();
-	memtier = rcu_dereference(pgdat->memtier);
-	if (!memtier) {
-		toptier = true;
-		goto out;
-	}
-	if (memtier->adistance_start <= top_tier_adistance)
-		toptier = true;
-	else
-		toptier = false;
-out:
-	rcu_read_unlock();
-	return toptier;
+    // check if the node has memory
+    if (!node_state(node, N_MEMORY))
+        return false;
+
+    // check if the node has cpu
+    if (!node_state(node, N_CPU))
+        return false;
+
+    // if the node has memory and cpu, it must be a toptier
+    return true;
 }
 
 void node_get_allowed_targets(pg_data_t *pgdat, nodemask_t *targets)
@@ -411,9 +406,9 @@ int next_demotion_node(int node)
 	 * caching issue, which seems more complicated. So selecting
 	 * target node randomly seems better until now.
 	 */
-	target = node_random(&nd->preferred);
+	target = node_random(&nd->target_demotion_nodes);
     pr_info("node %d next_demotion_node: %d\n", node, target);
-    get_target_demotion_node(&nd->preferred);
+    get_target_demotion_node(&nd->target_demotion_nodes);
     
 	rcu_read_unlock();
 
@@ -426,7 +421,7 @@ static void disable_all_demotion_targets(void)
 	int node;
 
 	for_each_node_state(node, N_MEMORY) {
-		node_demotion[node].preferred = NODE_MASK_NONE;
+		node_demotion[node].target_demotion_nodes = NODE_MASK_NONE;
 		/*
 		 * We are holding memory_tier_lock, it is safe
 		 * to access pgda->memtier.
@@ -446,35 +441,35 @@ static void disable_all_demotion_targets(void)
 
 static void dump_demotion_targets(void)
 {
-	int node;
+	int node, nid;
 
 	for_each_node_state(node, N_MEMORY) {
 		struct memory_tier *memtier = __node_get_memory_tier(node);
-		nodemask_t preferred = node_demotion[node].preferred;
+		nodemask_t target_demotion_nodes = node_demotion[node].target_demotion_nodes;
 
 		if (!memtier)
 			continue;
 
-		if (nodes_empty(preferred))
-			pr_info("Demotion targets for Node %d: null\n", node);
-		else
-			pr_info("Demotion targets for Node %d: preferred: %*pbl, fallback: %*pbl\n",
-				node, nodemask_pr_args(&preferred),
-				nodemask_pr_args(&memtier->lower_tier_mask));
+		if (nodes_empty(target_demotion_nodes))
+			pr_info("node %d has no demotion target\n", node);
+		else {
+            pr_info("node %d demotion target: ", node);
+            for_each_node_mask(nid, target_demotion_nodes) {
+                pr_cont("%d ", nid);
+            }
+            pr_cont("\n");
+        }
 	}
 }
 
 /*
- * Find an automatic demotion target for all memory
- * nodes. Failing here is OK.  It might just indicate
- * being at the end of a chain.
+ * for each toptier node, find all available nodes as demotion target
  */
 static void establish_demotion_targets(void)
 {
 	struct memory_tier *memtier;
 	struct demotion_nodes *nd;
-	int target = NUMA_NO_NODE, node;
-	int distance, best_distance;
+	int node, target_node;
 	nodemask_t tier_nodes, lower_tier;
 
 	lockdep_assert_held_once(&memory_tier_lock);
@@ -484,45 +479,22 @@ static void establish_demotion_targets(void)
 
 	disable_all_demotion_targets();
 
-	for_each_node_state(node, N_MEMORY) {
-		best_distance = -1;
+    // for each toptier node, find all available nodes as demotion target
+    for_each_node_state(node, N_MEMORY) {
+        // skip if node has no cpu(cxl node)
+        if (!node_is_toptier(node))
+            continue;
+        pr_info("node %d is toptier\n", node);
 		nd = &node_demotion[node];
 
-		memtier = __node_get_memory_tier(node);
-		if (!memtier || list_is_last(&memtier->list, &memory_tiers))
-			continue;
-		/*
-		 * Get the lower memtier to find the  demotion node list.
-		 */
-		memtier = list_next_entry(memtier, list);
-		tier_nodes = get_memtier_nodemask(memtier);
-		/*
-		 * find_next_best_node, use 'used' nodemask as a skip list.
-		 * Add all memory nodes except the selected memory tier
-		 * nodelist to skip list so that we find the best node from the
-		 * memtier nodelist.
-		 */
-		nodes_andnot(tier_nodes, node_states[N_MEMORY], tier_nodes);
-		/*
-		 * Find all the nodes in the memory tier node list of same best distance.
-		 * add them to the preferred mask. We randomly select between nodes
-		 * in the preferred mask when allocating pages during demotion.
-		 */
-		do {
-			target = find_next_best_node(node, &tier_nodes);
-			if (target == NUMA_NO_NODE)
-				break;
-
-			distance = node_distance(node, target);
-			if (distance == best_distance || best_distance == -1) {
-				best_distance = distance;
-				node_set(target, nd->preferred);
-			} else {
-				break;
-			}
-		} while (1);
+        for_each_node_state(target_node, N_MEMORY) {
+            // add all available nodes as demotion target
+            if (target_node == node)
+                continue;
+            node_set(target_node, nd->target_demotion_nodes);
+        }
 	}
-	/*
+    /*
 	 * Promotion is allowed from a memory tier to higher
 	 * memory tier only if the memory tier doesn't include
 	 * compute. We want to skip promotion from a memory tier,
@@ -781,7 +753,7 @@ static int __init memory_tier_init(void)
 }
 subsys_initcall(memory_tier_init);
 
-bool numa_demotion_enabled = false;
+bool numa_demotion_enabled = true;
 
 #ifdef CONFIG_MIGRATION
 #ifdef CONFIG_SYSFS

@@ -4,7 +4,9 @@ obj-y := vtism.o
 page_classify-objs := page_classify.o kvm.o
 page_migrate-objs := page_demotion.o
 
-vtism-objs := main.o vtismctl.o workqueue.o $(page_classify-objs) $(page_migrate-objs)
+sysctl-objs := sysctl/vtismctl.o sysctl/pcm.o
+
+vtism-objs := main.o $(sysctl-objs) workqueue.o $(page_classify-objs) $(page_migrate-objs)
 
 EXTRA_CFLAGS += -Wno-unused-function
 

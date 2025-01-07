@@ -6,7 +6,9 @@
 #include <linux/slab.h>
 #include <linux/sysfs.h>
 
-#include "common.h"
+#include "../common.h"
+#include "linux/types.h"
+#include "pcm.h"
 
 #define VTISM_VM_PIDS_MAX CONFIG_VTISM_VM_PIDS_MAX
 
@@ -52,9 +54,41 @@ static ssize_t vm_pids_store(struct kobject *kobj, struct kobj_attribute *attr, 
 
 static struct kobj_attribute vtism_vm_pids_attr = __ATTR_RW(vm_pids);
 
+struct demotion_nodes {
+	nodemask_t target_demotion_nodes;
+};
+extern struct demotion_nodes *node_demotion;
+ssize_t dump_demotion_target(char *buf) {
+    ssize_t len = 0;
+    int node, nid;
+
+    for_each_node_state(node, N_MEMORY) {
+        nodemask_t target_demotion_nodes = node_demotion[node].target_demotion_nodes;
+        if (nodes_empty(target_demotion_nodes)) {
+            len += sysfs_emit_at(buf, len, "node %d has no demotion target\n", node);
+        } else {
+            len += sysfs_emit_at(buf, len, "node %d demotion target: ", node);
+            for_each_node_mask(nid, target_demotion_nodes) {
+                len += sysfs_emit_at(buf, len, "%d ", nid);
+            }
+            len += sysfs_emit_at(buf, len, "\n");
+        }
+    }
+
+    return len;
+}
+
+static ssize_t dump_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+    ssize_t len = dump_demotion_target(buf);
+    return len;
+}
+
+static struct kobj_attribute vtism_dump_attr = __ATTR_RO(dump);
+
 static struct attribute *vtism_attrs[] = {
     &vtism_enable_attr.attr,
     &vtism_vm_pids_attr.attr,
+    &vtism_dump_attr.attr,
     NULL,
 };
 static const struct attribute_group vtism_attr_group = {
@@ -62,62 +96,14 @@ static const struct attribute_group vtism_attr_group = {
 };
 
 /*
------------------------
-        PCM
------------------------
-*/
-
-// intel pcm program runing in background
-static unsigned int pcm_interval = 1000;
-// static char pcm_bandwidth_buf[4096];
-
-static ssize_t pcm_interval_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
-    return sysfs_emit(buf, "%u\n", pcm_interval);
-}
-static ssize_t pcm_interval_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-    int ret;
-    ret = kstrtouint(buf, 10, &pcm_interval);
-    if (ret < 0)
-        return ret;
-    return count;
-}
-
-static struct kobj_attribute vtism_pcm_interval = __ATTR_RW(pcm_interval);
-
-static ssize_t pcm_bandwidth_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
-    return sysfs_emit(buf, "%u\n", pcm_interval);
-}
-static ssize_t pcm_bandwidth_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-    int ret;
-    ret = kstrtouint(buf, 10, &pcm_interval);
-    if (ret < 0)
-        return ret;
-    return count;
-}
-
-static struct kobj_attribute vtism_pcm_bandwidth = __ATTR_RW(pcm_bandwidth);
-
-static struct attribute *vtism_pcm_attrs[] = {
-    &vtism_pcm_interval.attr,
-    &vtism_pcm_bandwidth.attr,
-    NULL,
-};
-
-static const struct attribute_group pcm_attr_group = {
-    .attrs = vtism_pcm_attrs,
-};
-
-/*
 
 kernel system interface for vtism (/sys/kernel/mm/vtism)
-
-
 
 */
 
 static int __init vtism_init(void) {
     int err;
-    struct kobject *vtism_kobj, *pcm;
+    struct kobject *vtism_kobj;
     vtism_kobj = kobject_create_and_add("vtism", mm_kobj);
     if (!vtism_kobj) {
         pr_err("failed to create vtism kobject\n");
@@ -129,8 +115,11 @@ static int __init vtism_init(void) {
         goto delete_obj;
     }
 
-    pcm = kobject_create_and_add("pcm", vtism_kobj);
-    err = sysfs_create_group(pcm, &pcm_attr_group);
+    err = register_pcm_sysctl(vtism_kobj);
+    if (err) {
+        pr_err("failed to register pcm group\n");
+        goto delete_obj;
+    }
 
     return 0;
 delete_obj:
