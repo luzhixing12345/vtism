@@ -23,7 +23,6 @@
 #define LOW_WATERMARK    100   // 冷页面迁移阈值
 
 static struct hrtimer demotion_timer;
-
 static bool pgdat_free_space_enough(struct pglist_data *pgdat) {
     int z;
     unsigned long enough_wmark;
@@ -46,26 +45,26 @@ static enum hrtimer_restart demotion_scan(struct hrtimer *timer) {
 
     // 遍历所有 NUMA 节点
     for_each_online_node(nid) {
-        // struct pglist_data *pgdat = NODE_DATA(nid);
-        // unsigned long total_pages = 0;
-        // unsigned long free_pages = 0;
+        struct pglist_data *pgdat = NODE_DATA(nid);
+        unsigned long total_pages = 0;
+        unsigned long free_pages = 0;
 
-        // // 遍历该节点的所有 zones
-        // for (int zid = 0; zid < MAX_NR_ZONES; zid++) {
-        //     struct zone *zone = pgdat->node_zones + zid;
+        // 遍历该节点的所有 zones
+        for (int zid = 0; zid < MAX_NR_ZONES; zid++) {
+            struct zone *zone = pgdat->node_zones + zid;
 
-        //     // 跳过无效或未初始化的 zone
-        //     if (!populated_zone(zone))
-        //         continue;
+            // 跳过无效或未初始化的 zone
+            if (!populated_zone(zone))
+                continue;
 
-        //     // 获取 total 和 free 页面数
-        //     total_pages += atomic_long_read(&zone->managed_pages);
-        //     free_pages += zone_page_state(zone, NR_FREE_PAGES);
-        // }
+            // 获取 total 和 free 页面数
+            total_pages += atomic_long_read(&zone->managed_pages);
+            free_pages += zone_page_state(zone, NR_FREE_PAGES);
+        }
 
-        // // 打印节点信息
-        // // INFO("Node %d: total = %lu KB, free = %lu KB\n",
-        // //      nid, total_pages << (PAGE_SHIFT - 10), free_pages << (PAGE_SHIFT - 10));
+        // 打印节点信息
+        INFO("Node %d: total = %lu KB, free = %lu KB\n",
+             nid, total_pages << (PAGE_SHIFT - 10), free_pages << (PAGE_SHIFT - 10));
         // unsigned long watermark = free_pages * 1000 / total_pages;
         // if (watermark < LOW_WATERMARK) {
         //     // 进行冷页面迁移

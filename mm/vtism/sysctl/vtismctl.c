@@ -1,8 +1,15 @@
 
+#include <linux/hrtimer.h>
+#include <linux/kernel.h>
 #include <linux/kobject.h>
+#include <linux/ktime.h>
 #include <linux/lockdep.h>
 #include <linux/memory-tiers.h>
 #include <linux/memory.h>
+#include <linux/migrate.h>
+#include <linux/mmzone.h>
+#include <linux/module.h>
+#include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/sysfs.h>
 
@@ -14,20 +21,6 @@
 
 unsigned int vtism_vm_pids[VTISM_VM_PIDS_MAX] = {0};
 unsigned int vtism_vm_pids_count = 0;
-
-unsigned int vtism_enable = 1;
-
-static ssize_t enable_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
-    return sysfs_emit(buf, "%u\n", vtism_enable);
-}
-static ssize_t enable_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-    int ret;
-    ret = kstrtouint(buf, 10, &vtism_enable);
-    if (ret < 0)
-        return ret;
-    return count;
-}
-static struct kobj_attribute vtism_enable_attr = __ATTR_RW(enable);
 
 static ssize_t vm_pids_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
     ssize_t len = 0;
@@ -55,17 +48,17 @@ static ssize_t vm_pids_store(struct kobject *kobj, struct kobj_attribute *attr, 
 static struct kobj_attribute vtism_vm_pids_attr = __ATTR_RW(vm_pids);
 
 struct demotion_nodes {
-	nodemask_t target_demotion_nodes;
+    nodemask_t target_demotion_nodes;
 };
 extern struct demotion_nodes *node_demotion;
-ssize_t dump_demotion_target(char *buf) {
+ssize_t dump_demotion_pretarget(char *buf) {
     ssize_t len = 0;
     int node, nid;
 
     for_each_node_state(node, N_MEMORY) {
         nodemask_t target_demotion_nodes = node_demotion[node].target_demotion_nodes;
         if (nodes_empty(target_demotion_nodes)) {
-            len += sysfs_emit_at(buf, len, "node %d has no demotion target\n", node);
+            len += sysfs_emit_at(buf, len, "node %d has no demotion target(cxl node)\n", node);
         } else {
             len += sysfs_emit_at(buf, len, "node %d demotion target: ", node);
             for_each_node_mask(nid, target_demotion_nodes) {
@@ -74,19 +67,56 @@ ssize_t dump_demotion_target(char *buf) {
             len += sysfs_emit_at(buf, len, "\n");
         }
     }
+    len += sysfs_emit_at(buf, len, "\n");
+    return len;
+}
 
+static ssize_t dump_node_mem_info(char *buf, ssize_t len) {
+    int nid;
+
+    // 遍历所有 NUMA 节点
+    for_each_online_node(nid) {
+        struct pglist_data *pgdat = NODE_DATA(nid);
+        unsigned long total_pages = 0;
+        unsigned long free_pages = 0;
+
+        // 遍历该节点的所有 zones
+        for (int zid = 0; zid < MAX_NR_ZONES; zid++) {
+            struct zone *zone = pgdat->node_zones + zid;
+
+            // 跳过无效或未初始化的 zone
+            if (!populated_zone(zone))
+                continue;
+
+            // 获取 total 和 free 页面数
+            total_pages += atomic_long_read(&zone->managed_pages);
+            free_pages += zone_page_state(zone, NR_FREE_PAGES);
+        }
+
+        // 打印节点信息
+        len += sysfs_emit_at(buf,
+                             len,
+                             "node %d: total = %lu MB(%lu GB), free = %lu MB(%lu GB)\n",
+                             nid,
+                             (total_pages * PAGE_SIZE) >> 20,
+                             (total_pages * PAGE_SIZE) >> 30,
+                             (free_pages * PAGE_SIZE) >> 20,
+                             (free_pages * PAGE_SIZE) >> 30);
+    }
+    len += sysfs_emit_at(buf, len, "\n");
     return len;
 }
 
 static ssize_t dump_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
-    ssize_t len = dump_demotion_target(buf);
+    ssize_t len = dump_demotion_pretarget(buf);
+    len += dump_node_mem_info(buf, len);
+    len += dump_node_info(buf, len);
     return len;
 }
 
 static struct kobj_attribute vtism_dump_attr = __ATTR_RO(dump);
 
 static struct attribute *vtism_attrs[] = {
-    &vtism_enable_attr.attr,
     &vtism_vm_pids_attr.attr,
     &vtism_dump_attr.attr,
     NULL,

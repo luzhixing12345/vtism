@@ -252,12 +252,8 @@ bool node_is_toptier(int node)
     if (!node_state(node, N_MEMORY))
         return false;
 
-    // check if the node has cpu
-    if (!node_state(node, N_CPU))
-        return false;
-
     // if the node has memory and cpu, it must be a toptier
-    return true;
+    return node_state(node, N_CPU);
 }
 
 void node_get_allowed_targets(pg_data_t *pgdat, nodemask_t *targets)
