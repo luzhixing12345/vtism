@@ -1,13 +1,14 @@
 
 #include "kvm.h"
 
+#include <asm-generic/errno-base.h>
 #include <linux/sort.h>
 #include <linux/string.h>
 
-#include "asm-generic/errno-base.h"
 #include "common.h"
 
 struct vm_context qemu_vm = {0};
+extern bool vtism_enable;
 
 static int get_kvm_by_vpid(pid_t nr, struct kvm **kvmp, struct file **shared_filep) {
     struct pid *pid;
@@ -51,11 +52,11 @@ static int get_kvm_by_vpid(pid_t nr, struct kvm **kvmp, struct file **shared_fil
     }
     rcu_read_unlock();
     if (!kvm) {
-        ERR("process (pid = %d) has no kvm", nr);
+        ERR("qemu process (pid = %d) has no kvm", nr);
         return -EINVAL;
     }
     if (!shared_file) {
-        ERR("process (pid = %d) has no shared memory file", nr);
+        ERR("qemu process (pid = %d) has no shared memory file", nr);
         return -EINVAL;
     }
     (*kvmp) = kvm;
@@ -177,6 +178,35 @@ uint64_t gpa2hva(struct qemu_struct *qemu, uint64_t gpa) {
     return 0;
 }
 
+ssize_t dump_vm_info(char *buf, ssize_t len) {
+    len += sysfs_emit_at(buf, len, "[vm info]\n");
+    if (!vtism_enable) {
+        len += sysfs_emit_at(buf, len, "not enable vtism qemu info, please run qemu first and enable vtism\n");
+        len += sysfs_emit_at(buf, len, "use \"echo 1 > /sys/kernel/mm/vtism/enable\" to get qemu info\n");
+    } else {
+        len += sysfs_emit_at(buf, len, "qemu_num: %d\n", qemu_vm.qemu_num);
+        for (int i = 0; i < qemu_vm.qemu_num; i++) {
+            len += sysfs_emit_at(buf, len, "  qemu[%d]: pid: %d\n", i, qemu_vm.qemu[i].pid);
+            struct qemu_struct *qemu = &qemu_vm.qemu[i];
+            uint64_t total_pages = 0;
+            for (size_t i = 0; i < qemu->count; i++) {
+                struct kvm_ept_memslot *memslots = qemu->memslots;
+                len += sysfs_emit_at(buf,
+                                     len,
+                                     "  memslot[%lu]: gpa: %016llx, hva: %016llx, count: %lu\n",
+                                     i,
+                                     memslots[i].gpa,
+                                     memslots[i].hva,
+                                     memslots[i].page_count);
+                total_pages += memslots[i].page_count;
+            }
+            len += sysfs_emit_at(buf, len, "  total pages: %llu [%lld GB]\n", total_pages, total_pages * 4 / 1024 / 1024);
+        }
+    }
+    len += sysfs_emit_at(buf, len, "\n");
+    return len;
+}
+
 int init_vm(void) {
     // uint64_t *ept_root = kvm_struct->ept_root;
     int ret;
@@ -201,28 +231,29 @@ int init_vm(void) {
             return ret;
         }
 
-        // if ((ret = get_kvm_ept(qemu)) < 0) {
-        //     kvm_put_kvm(qemu->kvm);
-        //     ERR("get_ept failed\n");
-        //     return ret;
-        // }
-        // show_ept(qemu);
+        if ((ret = get_kvm_ept(qemu)) < 0) {
+            kvm_put_kvm(qemu->kvm);
+            ERR("get_ept failed\n");
+            return ret;
+        }
+        show_ept(qemu);
 
-        // if ((ret = get_ept_root(qemu)) < 0) {
-        //     kvm_put_kvm(qemu->kvm);
-        //     ERR("get_ept_root failed\n");
-        //     return ret;
-        // }
+        if ((ret = get_ept_root(qemu)) < 0) {
+            kvm_put_kvm(qemu->kvm);
+            ERR("get_ept_root failed\n");
+            return ret;
+        }
     }
 
     return ret;
 }
 
-int free_vm(void) {
+int destory_vm(void) {
     for (int i = 0; i < qemu_vm.qemu_num; i++) {
         struct qemu_struct *qemu = &qemu_vm.qemu[i];
         kvm_put_kvm(qemu->kvm);
         filp_close(qemu->shared_file, NULL);
     }
+    qemu_vm.qemu_num = 0;
     return 0;
 }

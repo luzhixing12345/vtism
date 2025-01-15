@@ -104,6 +104,9 @@ static int top_tier_adistance;
  *
  */
 struct demotion_nodes *node_demotion __read_mostly;
+#ifdef CONFIG_VTISM_MODULE_SYM_EXPORT
+EXPORT_SYMBOL(node_demotion);
+#endif
 #endif /* CONFIG_MIGRATION */
 
 static inline struct memory_tier *to_memory_tier(struct device *device)
@@ -255,6 +258,9 @@ bool node_is_toptier(int node)
     // if the node has memory and cpu, it must be a toptier
     return node_state(node, N_CPU);
 }
+#ifdef CONFIG_VTISM_MODULE_SYM_EXPORT
+EXPORT_SYMBOL(node_is_toptier);
+#endif
 
 void node_get_allowed_targets(pg_data_t *pgdat, nodemask_t *targets)
 {

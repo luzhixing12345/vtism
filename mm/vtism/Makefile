@@ -1,10 +1,11 @@
 
-obj-y := vtism.o
+CONFIG_VTISM := m
+obj-$(CONFIG_VTISM) := vtism.o
 
 page_classify-objs := page_classify.o kvm.o
 page_migrate-objs := page_demotion.o
 
-sysctl-objs := sysctl/vtismctl.o sysctl/pcm.o
+sysctl-objs := vtismctl.o pcm.o
 
 vtism-objs := main.o $(sysctl-objs) workqueue.o $(page_classify-objs) $(page_migrate-objs)
 

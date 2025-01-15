@@ -154,6 +154,9 @@ early_param("mminit_loglevel", set_mminit_loglevel);
 #endif /* CONFIG_DEBUG_MEMORY_INIT */
 
 struct kobject *mm_kobj;
+#ifdef CONFIG_VTISM_MODULE_SYM_EXPORT
+EXPORT_SYMBOL(mm_kobj);
+#endif
 
 #ifdef CONFIG_SMP
 s32 vm_committed_as_batch = 32;

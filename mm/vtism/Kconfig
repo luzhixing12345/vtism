@@ -1,0 +1,15 @@
+menuconfig VTISM
+    tristate "Enable VTISM"
+    depends on MIGRATION && HOTPLUG_CPU && NUMA
+
+if VTISM
+
+config VTISM_MODULE_SYM_EXPORT
+    bool "Allow modular compilation of VTISM"
+    default y
+    depends on VTISM=m
+    help
+        Allow the VTISM module to be compiled as a loadable kernel module. 
+        This option is automatically enabled when VTISM is set to 'm'.
+
+endif # VTISM

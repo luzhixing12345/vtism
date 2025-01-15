@@ -1,4 +1,5 @@
 
+#include <asm-generic/errno-base.h>
 #include <linux/hrtimer.h>
 #include <linux/kernel.h>
 #include <linux/kobject.h>
@@ -13,39 +14,13 @@
 #include <linux/slab.h>
 #include <linux/sysfs.h>
 
-#include "../common.h"
+#include "common.h"
+#include "kvm.h"
 #include "linux/types.h"
 #include "pcm.h"
 
-#define VTISM_VM_PIDS_MAX CONFIG_VTISM_VM_PIDS_MAX
-
-unsigned int vtism_vm_pids[VTISM_VM_PIDS_MAX] = {0};
-unsigned int vtism_vm_pids_count = 0;
-
-static ssize_t vm_pids_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
-    ssize_t len = 0;
-    int i;
-
-    for (i = 0; i < VTISM_VM_PIDS_MAX; i++) len += sysfs_emit_at(buf, len, "%d ", vtism_vm_pids[i]);
-
-    len += sysfs_emit_at(buf, len, "\n");  // Add a newline at the end
-    return len;
-}
-
-static ssize_t vm_pids_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-    int ret;
-
-    if (vtism_vm_pids_count >= VTISM_VM_PIDS_MAX)
-        return -EINVAL;
-
-    ret = kstrtouint(buf, 10, &vtism_vm_pids[vtism_vm_pids_count++]);
-    if (ret < 0)
-        return ret;
-
-    return count;
-}
-
-static struct kobj_attribute vtism_vm_pids_attr = __ATTR_RW(vm_pids);
+static struct kobject *vtism_kobj;
+bool vtism_enable = false;
 
 struct demotion_nodes {
     nodemask_t target_demotion_nodes;
@@ -54,7 +29,7 @@ extern struct demotion_nodes *node_demotion;
 ssize_t dump_demotion_pretarget(char *buf) {
     ssize_t len = 0;
     int node, nid;
-
+    len += sysfs_emit_at(buf, len, "[demotion pretarget]\n");
     for_each_node_state(node, N_MEMORY) {
         nodemask_t target_demotion_nodes = node_demotion[node].target_demotion_nodes;
         if (nodes_empty(target_demotion_nodes)) {
@@ -73,7 +48,7 @@ ssize_t dump_demotion_pretarget(char *buf) {
 
 static ssize_t dump_node_mem_info(char *buf, ssize_t len) {
     int nid;
-
+    len += sysfs_emit_at(buf, len, "[node mem info]\n");
     // 遍历所有 NUMA 节点
     for_each_online_node(nid) {
         struct pglist_data *pgdat = NODE_DATA(nid);
@@ -109,39 +84,62 @@ static ssize_t dump_node_mem_info(char *buf, ssize_t len) {
 
 static ssize_t dump_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
     ssize_t len = dump_demotion_pretarget(buf);
+    len += dump_vm_info(buf, len);
     len += dump_node_mem_info(buf, len);
-    len += dump_node_info(buf, len);
+    len += dump_node_bw_lat_info(buf, len);
     return len;
 }
 
 static struct kobj_attribute vtism_dump_attr = __ATTR_RO(dump);
 
-static struct attribute *vtism_attrs[] = {
-    &vtism_vm_pids_attr.attr,
-    &vtism_dump_attr.attr,
-    NULL,
-};
-static const struct attribute_group vtism_attr_group = {
-    .attrs = vtism_attrs,
-};
+static ssize_t enable_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+    return sysfs_emit(buf, "%s\n", vtism_enable ? "true" : "false");
+}
+
+static ssize_t enable_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+    if (kstrtobool(buf, &vtism_enable) == -EINVAL) {
+        return -EINVAL;
+    }
+
+    if (vtism_enable) {
+        if (init_vm() < 0) {
+            vtism_enable = false;
+            ERR("enable vtism failed\n");
+        }
+        INFO("init_vm success\n");
+    } else {
+        destory_vm();
+    }
+    return count;
+}
+struct kobj_attribute vtism_enable_attr;
 
 /*
-
 kernel system interface for vtism (/sys/kernel/mm/vtism)
-
 */
 
-static int __init vtism_init(void) {
+int vtismctl_init(void) {
     int err;
-    struct kobject *vtism_kobj;
     vtism_kobj = kobject_create_and_add("vtism", mm_kobj);
     if (!vtism_kobj) {
         pr_err("failed to create vtism kobject\n");
         return -ENOMEM;
     }
-    err = sysfs_create_group(vtism_kobj, &vtism_attr_group);
+
+    err = sysfs_create_file(vtism_kobj, &vtism_dump_attr.attr);
     if (err) {
-        pr_err("failed to register vtism group\n");
+        pr_err("failed to create dump file\n");
+        goto delete_obj;
+    }
+
+    sysfs_attr_init(&vtism_enable_attr.attr);
+    vtism_enable_attr.attr.name = "enable";
+    vtism_enable_attr.attr.mode = 0666;
+    vtism_enable_attr.show = enable_show;
+    vtism_enable_attr.store = enable_store;
+    err = sysfs_create_file(vtism_kobj, &vtism_enable_attr.attr);
+    if (err) {
+        pr_err("failed to create enable file\n");
         goto delete_obj;
     }
 
@@ -156,4 +154,10 @@ delete_obj:
     kobject_put(vtism_kobj);
     return err;
 }
-subsys_initcall(vtism_init);
+
+int vtismctl_exit(void) {
+    kobject_del(vtism_kobj);
+    unregister_pcm_sysctl();
+    INFO("unload vtismctl module\n");
+    return 0;
+}

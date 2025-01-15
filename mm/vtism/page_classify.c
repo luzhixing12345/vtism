@@ -5,8 +5,7 @@
  *@date: 2024-12-16
  *@email: luzhixing12345@163.com
  *@Github: luzhixing12345
-*/
-
+ */
 
 #include "page_classify.h"
 
@@ -203,7 +202,7 @@ void page_classify_exit(void) {
         INFO("Page walk thread stopped.\n");
     }
     hrtimer_cancel(&page_classify_hrtimer);
-    free_vm();
+    destory_vm();
     if (pte_addr)
         vfree(pte_addr);
     if (last_ids)

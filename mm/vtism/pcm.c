@@ -2,6 +2,7 @@
 
 #include "pcm.h"
 
+#include "linux/kobject.h"
 #include "linux/memory-tiers.h"
 
 /*
@@ -22,6 +23,7 @@ struct node_info {
     struct kobj_attribute write_bw_attr;
     struct kobj_attribute latency_attr;
     struct kobj_attribute to_cxl_latency_attr;
+    struct kobject *node_kobj;
 };
 static struct node_info *node_info_data;
 
@@ -83,10 +85,18 @@ static ssize_t node_to_cxl_latency_store(struct kobject *kobj, struct kobj_attri
     return count;
 }
 
-ssize_t dump_node_info(char *buf, ssize_t len) {
+ssize_t dump_node_bw_lat_info(char *buf, ssize_t len) {
     int i;
+    len += sysfs_emit_at(buf, len, "[node bw latency info]\n");
     // 设置列宽并打印表头
-    len += sysfs_emit_at(buf, len, "%6s %15s %15s %12s %14s\n", "node", "read_bw(MB/s)", "write_bw(MB/s)", "latency(ns)", "to_cxl_latency(ns)");
+    len += sysfs_emit_at(buf,
+                         len,
+                         "%6s %15s %15s %12s %14s\n",
+                         "node",
+                         "read_bw(MB/s)",
+                         "write_bw(MB/s)",
+                         "latency(ns)",
+                         "to_cxl_latency(ns)");
     for (i = 0; i < num_online_nodes(); i++) {
         struct node_info *data = &node_info_data[i];
         // 格式化输出,每列的宽度与表头保持一致,右对齐
@@ -99,6 +109,7 @@ ssize_t dump_node_info(char *buf, ssize_t len) {
         }
         len += sysfs_emit_at(buf, len, "\n");
     }
+    len += sysfs_emit_at(buf, len, "\n");
     return len;
 }
 
@@ -165,6 +176,8 @@ static int create_node_sysfs_files(struct kobject *parent_kobj) {
                 return -ENOMEM;
             }
         }
+
+        node_info_data[i].node_kobj = node_kobj;
     }
 
     return 0;
@@ -179,4 +192,11 @@ int register_pcm_sysctl(struct kobject *vtism_kobj) {
         kobject_put(pcm);
     }
     return err;
+}
+
+void unregister_pcm_sysctl(void) {
+    if (node_info_data) {
+        kfree(node_info_data);
+        node_info_data = NULL;  
+    }
 }
