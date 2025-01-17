@@ -409,8 +409,7 @@ int next_demotion_node(int node)
 	 * target node randomly seems better until now.
 	 */
 	target = node_random(&nd->target_demotion_nodes);
-    pr_info("node %d next_demotion_node: %d\n", node, target);
-    get_target_demotion_node(&nd->target_demotion_nodes);
+    // get_target_demotion_node(&nd->target_demotion_nodes);
     
 	rcu_read_unlock();
 
@@ -755,7 +754,7 @@ static int __init memory_tier_init(void)
 }
 subsys_initcall(memory_tier_init);
 
-bool numa_demotion_enabled = true;
+bool numa_demotion_enabled = false;
 
 #ifdef CONFIG_MIGRATION
 #ifdef CONFIG_SYSFS

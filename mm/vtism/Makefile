@@ -3,7 +3,7 @@ CONFIG_VTISM := m
 obj-$(CONFIG_VTISM) := vtism.o
 
 page_classify-objs := page_classify.o kvm.o
-page_migrate-objs := page_demotion.o
+page_migrate-objs := page_migration.o
 
 sysctl-objs := vtismctl.o pcm.o
 

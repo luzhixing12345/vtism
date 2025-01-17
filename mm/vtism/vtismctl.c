@@ -16,7 +16,8 @@
 
 #include "common.h"
 #include "kvm.h"
-#include "linux/types.h"
+#include "page_classify.h"
+#include "page_migration.h"
 #include "pcm.h"
 
 static struct kobject *vtism_kobj;
@@ -84,9 +85,11 @@ static ssize_t dump_node_mem_info(char *buf, ssize_t len) {
 
 static ssize_t dump_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
     ssize_t len = dump_demotion_pretarget(buf);
-    len += dump_vm_info(buf, len);
-    len += dump_node_mem_info(buf, len);
-    len += dump_node_bw_lat_info(buf, len);
+    len = dump_vm_info(buf, len);
+    len = dump_node_mem_info(buf, len);
+    len = dump_node_bw_lat_info(buf, len);
+    len = dump_page_classify_info(buf, len);
+    len = dump_page_migration_info(buf, len);
     return len;
 }
 
@@ -102,13 +105,17 @@ static ssize_t enable_store(struct kobject *kobj, struct kobj_attribute *attr, c
     }
 
     if (vtism_enable) {
-        if (init_vm() < 0) {
+        if (page_classify_init() < 0) {
             vtism_enable = false;
-            ERR("enable vtism failed\n");
+            ERR("enable vtism failed, set vtism_enable to false\n");
         }
-        INFO("init_vm success\n");
+        if (page_migration_init() < 0) {
+            vtism_enable = false;
+            ERR("enable vtism failed, set vtism_enable to false\n");
+        }
     } else {
-        destory_vm();
+        page_classify_exit();
+        page_migration_exit();
     }
     return count;
 }
@@ -136,7 +143,7 @@ int vtismctl_init(void) {
     vtism_enable_attr.attr.name = "enable";
     vtism_enable_attr.attr.mode = 0666;
     vtism_enable_attr.show = enable_show;
-    vtism_enable_attr.store = enable_store;
+    vtism_enable_attr.store = enable_store; // control vtism page classify and migrate
     err = sysfs_create_file(vtism_kobj, &vtism_enable_attr.attr);
     if (err) {
         pr_err("failed to create enable file\n");

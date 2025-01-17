@@ -31,3 +31,4 @@ enum page_type {
 
 int page_classify_init(void);
 void page_classify_exit(void);
+ssize_t dump_page_classify_info(char *buf, ssize_t len);

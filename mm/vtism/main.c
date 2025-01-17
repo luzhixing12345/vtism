@@ -7,7 +7,7 @@
 
 #include "common.h"
 #include "page_classify.h"
-#include "page_demotion.h"
+#include "page_migration.h"
 #include "vtismctl.h"
 #include "workqueue.h"
 

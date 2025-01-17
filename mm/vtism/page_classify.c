@@ -29,13 +29,15 @@
 
 #include "common.h"
 #include "kvm.h"
+#include "linux/swap.h"
+#include "linux/sysfs.h"
 
 // each qemu vm(32GB) needs a 64MB shared memory buffer
 #define BUFFER_SIZE (64 * MB)
 
 void *pte_addr;
 uint64_t *last_ids;
-static struct task_struct *page_classify_thread;
+static struct task_struct *page_classify_thread = NULL;
 static struct hrtimer page_classify_hrtimer;
 static unsigned int thread_interval_ms = 5000;
 struct ivshmem_head {
@@ -84,6 +86,26 @@ struct page *get_kvm_page(struct kvm *kvm, uint64_t hva) {
     return page;
 }
 
+ssize_t dump_page_classify_info(char *buf, ssize_t len) {
+    len += sysfs_emit_at(buf, len, "[page classify info]\n");
+    if (page_classify_thread == NULL) {
+        len += sysfs_emit_at(buf, len, "not start page classify thread\n");
+        len += sysfs_emit_at(buf, len, "\n");
+        return len;
+    }
+    len += sysfs_emit_at(buf, len, "kclassify thread is running\n");
+    for (int i = 0; i < qemu_vm.qemu_num; i++) {
+        struct qemu_struct *qemu = &qemu_vm.qemu[i];
+        if (qemu->pte_num == 0) {
+            len += sysfs_emit_at(buf, len, "no data passed from qemu[%d]\n", i);
+        } else {
+            len += sysfs_emit_at(buf, len, "qemu[%d] pte_num: %lld\n", i, qemu->pte_num);
+        }
+    }
+    len += sysfs_emit_at(buf, len, "\n");
+    return len;
+}
+
 int get_kvm_pages(void) {
     for (int i = 0; i < qemu_vm.qemu_num; i++) {
         struct qemu_struct *qemu = &qemu_vm.qemu[i];
@@ -101,11 +123,8 @@ int get_kvm_pages(void) {
                     ERR("page not found: %016llx\n", hva);
                     continue;
                 }
-                int nid = page_to_nid(page);
-                INFO("page nid: %d\n", nid);
-                // if (is_zone_device_page(page)) {
-                //     put_page(page);
-                // }
+                folio_mark_accessed(page_folio(page));
+                put_page(page);
             }
         }
     }
@@ -181,11 +200,12 @@ int page_classify_init(void) {
         return ret;
     }
 
-    page_classify_thread = kthread_run(shm_read_data, NULL, "page_classify_thread");
+    page_classify_thread = kthread_run(shm_read_data, NULL, "kclassify");
     if (IS_ERR(page_classify_thread)) {
         ERR("Failed to create page walk thread.\n");
         return PTR_ERR(page_classify_thread);
     }
+    INFO("start page classify thread\n");
 
     hrtimer_init(&page_classify_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
     page_classify_hrtimer.function = page_classify_hrtimer_fn;
@@ -197,9 +217,10 @@ int page_classify_init(void) {
 
 void page_classify_exit(void) {
     // if thread is still running
-    if (!IS_ERR(page_classify_thread) && page_classify_thread) {
+    if (!IS_ERR(page_classify_thread)) {
         kthread_stop(page_classify_thread);
-        INFO("Page walk thread stopped.\n");
+        page_classify_thread = NULL;
+        INFO("page classify thread stopped.\n");
     }
     hrtimer_cancel(&page_classify_hrtimer);
     destory_vm();
@@ -208,5 +229,5 @@ void page_classify_exit(void) {
     if (last_ids)
         vfree(last_ids);
 
-    INFO("Module unloaded.\n");
+    INFO("page classify module unloaded.\n");
 }
