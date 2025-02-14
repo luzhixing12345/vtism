@@ -1,5 +1,4 @@
 
-CONFIG_VTISM := m
 obj-$(CONFIG_VTISM) := vtism.o
 
 page_classify-objs := page_classify.o kvm.o

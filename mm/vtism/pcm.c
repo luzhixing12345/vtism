@@ -10,22 +10,34 @@
         PCM
 -----------------------
 */
-struct node_info {
-    bool is_toptier;
-    unsigned int read_bw;
-    unsigned int write_bw;
-    // latency and to_cxl_latency only work on cpu node
-    unsigned int latency;
-    unsigned int to_cxl_latency;
-    unsigned int free_mem_size;
-    unsigned int total_mem_size;
-    struct kobj_attribute read_bw_attr;
-    struct kobj_attribute write_bw_attr;
-    struct kobj_attribute latency_attr;
-    struct kobj_attribute to_cxl_latency_attr;
-    struct kobject *node_kobj;
-};
+
 static struct node_info *node_info_data;
+
+int find_best_demotion_node(int node, const nodemask_t *maskp) {
+    int target_node;
+    int best_node = -1;
+    int best_score = INT_MAX;
+    /* 遍历 mask 中的每个候选节点 */
+    for_each_node_mask(target_node, *maskp) {
+        /* 排除自己 */
+        if (target_node == node)
+            continue;
+
+        struct node_info *info = &node_info_data[target_node];
+        int effective_latency = info->is_toptier ? info->latency : info->to_cxl_latency;
+        int effective_bw = (info->read_bw + info->write_bw) / 2;
+        int free_ratio = 100 * info->free_mem_size / info->total_mem_size;
+        if (free_ratio < 5) {
+            continue;
+        }
+        int score = effective_latency + effective_bw;
+        if (score < best_score) {
+            best_score = score;
+            best_node = target_node;
+        }
+    }
+    return best_node;
+}
 
 // 动态生成每个节点的读带宽显示
 static ssize_t node_read_bw_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
@@ -197,6 +209,6 @@ int register_pcm_sysctl(struct kobject *vtism_kobj) {
 void unregister_pcm_sysctl(void) {
     if (node_info_data) {
         kfree(node_info_data);
-        node_info_data = NULL;  
+        node_info_data = NULL;
     }
 }

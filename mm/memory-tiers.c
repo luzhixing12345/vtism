@@ -6,7 +6,7 @@
 #include <linux/kobject.h>
 #include <linux/memory.h>
 #include <linux/memory-tiers.h>
-
+#include "vtism/pcm.h"
 #include "internal.h"
 
 struct memory_tier {
@@ -280,67 +280,7 @@ void node_get_allowed_targets(pg_data_t *pgdat, nodemask_t *targets)
 	rcu_read_unlock();
 }
 
-static int get_node_free_ratio(int nid) {
-    struct pglist_data *pgdat = NODE_DATA(nid);
-    unsigned long total_pages = 0;
-    unsigned long free_pages = 0;
-
-    // 遍历该节点的所有 zones
-    for (int zid = 0; zid < MAX_NR_ZONES; zid++) {
-        struct zone *zone = pgdat->node_zones + zid;
-
-        // 跳过无效或未初始化的 zone
-        if (!populated_zone(zone))
-            continue;
-
-        // 获取 total 和 free 页面数
-        total_pages += atomic_long_read(&zone->managed_pages);
-        free_pages += zone_page_state(zone, NR_FREE_PAGES);
-    }
-
-    // 打印节点信息
-    // INFO("Node %d: total = %lu KB, free = %lu KB\n",
-    //      nid, total_pages << (PAGE_SHIFT - 10), free_pages << (PAGE_SHIFT - 10));
-    return free_pages * 1000 / total_pages;
-}
-
-/* If more than one node is allowed, check each target node's 
-- free/total memory ratio
-- memory type's adistance
-- memory type's migration cost
-- memory type's migration latency
-- memory type's migration bandwidth
-*/
-static int find_best_demotion_node(const nodemask_t *maskp) {
-    // int target_node = NUMA_NO_NODE;
-    int best_node = NUMA_NO_NODE;
-    // int distance = 0;
-    // int best_distance = 0;
-    int node;
-    for_each_node_mask(node, *maskp) {
-        int free_ratio = get_node_free_ratio(node);
-        int adistance = node_memory_types[node].memtype->adistance;
-        // int cost = node_memory_types[node].memtype->migration_cost;
-        // int latency = node_memory_types[node].memtype->migration_latency;
-        // int bandwidth = node_memory_types[node].memtype->migration_bandwidth;
-        // INFO("Node %d: free_ratio = %d, adistance = %d, cost = %d, latency = %d, bandwidth = %d\n",
-        //      node, free_ratio, adistance, cost, latency, bandwidth);
-        // if (free_ratio > 50) {
-        //     if (adistance > distance) {
-        //         target_node = node;
-        //         distance = adistance;
-        //     }
-        // }
-        // if (free_ratio > 50 && adistance > best_distance) {
-        //     best_node = node;
-        //     best_distance = adistance;
-        // }
-        pr_info("Node %d: free_ratio = %d, adistance = %d\n", node, free_ratio, adistance);
-    }
-    return best_node;
-}
-
-static int get_target_demotion_node(const nodemask_t *maskp) {
+int get_target_demotion_node(int node, const nodemask_t *maskp) {
 #if defined(CONFIG_NUMA) && (MAX_NUMNODES > 1)
 	int w, bit;
 
@@ -360,7 +300,7 @@ static int get_target_demotion_node(const nodemask_t *maskp) {
         // - memory type's migration cost
         // - memory type's migration latency
         // - memory type's migration bandwidth
-        bit = find_best_demotion_node(maskp);
+        bit = find_best_demotion_node(node, maskp);
 		break;
 	}
 	return bit;
@@ -408,8 +348,8 @@ int next_demotion_node(int node)
 	 * caching issue, which seems more complicated. So selecting
 	 * target node randomly seems better until now.
 	 */
-	target = node_random(&nd->target_demotion_nodes);
-    // get_target_demotion_node(&nd->target_demotion_nodes);
+	// target = node_random(&nd->target_demotion_nodes);
+    target = get_target_demotion_node(node, &nd->target_demotion_nodes);
     
 	rcu_read_unlock();
 
@@ -754,7 +694,7 @@ static int __init memory_tier_init(void)
 }
 subsys_initcall(memory_tier_init);
 
-bool numa_demotion_enabled = false;
+bool numa_demotion_enabled = true;
 
 #ifdef CONFIG_MIGRATION
 #ifdef CONFIG_SYSFS

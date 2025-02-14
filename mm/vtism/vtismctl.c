@@ -105,16 +105,16 @@ static ssize_t enable_store(struct kobject *kobj, struct kobj_attribute *attr, c
     }
 
     if (vtism_enable) {
-        if (page_classify_init() < 0) {
-            vtism_enable = false;
-            ERR("enable vtism failed, set vtism_enable to false\n");
-        }
+        // if (page_classify_init() < 0) {
+        //     vtism_enable = false;
+        //     ERR("enable vtism failed, set vtism_enable to false\n");
+        // }
         if (page_migration_init() < 0) {
             vtism_enable = false;
             ERR("enable vtism failed, set vtism_enable to false\n");
         }
     } else {
-        page_classify_exit();
+        // page_classify_exit();
         page_migration_exit();
     }
     return count;

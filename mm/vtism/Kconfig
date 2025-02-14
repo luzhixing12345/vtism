@@ -7,7 +7,7 @@ if VTISM
 config VTISM_MODULE_SYM_EXPORT
     bool "Allow modular compilation of VTISM"
     default y
-    depends on VTISM=m
+    depends on VTISM=y
     help
         Allow the VTISM module to be compiled as a loadable kernel module. 
         This option is automatically enabled when VTISM is set to 'm'.

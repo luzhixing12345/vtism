@@ -33,9 +33,20 @@ static wait_queue_head_t wq;
 static LIST_HEAD(migration_queue_head);
 static DEFINE_MUTEX(queue_lock);
 
+int add_migration_queue(int value) {
+    struct queue_node *node = kmalloc(sizeof(struct queue_node), GFP_KERNEL);
+    if (!node) {
+        return -ENOMEM;
+    }
+    node->data = value;
+    list_add_tail(&node->list, &migration_queue_head);
+    wake_up_interruptible(&wq);
+    return 0;
+}
+
 static int migration_thread(void *data) {
     int thread_id = *(int *)data;
-    INFO("Migration Thread %d: started and entering sleep.\n", thread_id);
+    INFO("Migration Thread %d: started\n", thread_id);
     while (!kthread_should_stop()) {
         wait_event_interruptible(wq, !list_empty(&migration_queue_head) || kthread_should_stop());
 
@@ -57,7 +68,6 @@ static int migration_thread(void *data) {
         mutex_unlock(&queue_lock);
     }
 
-    INFO("Migration Thread %d: exiting.\n", thread_id);
     return 0;
 }
 
@@ -93,9 +103,11 @@ ssize_t dump_page_migration_info(char *buf, ssize_t len) {
 
 int page_migration_init(void) {
     init_waitqueue_head(&wq);
+    int thread_ids[MIGRATION_THREAD_NUM];
 
     for (int i = 0; i < MIGRATION_THREAD_NUM; i++) {
-        migration_threads[i] = kthread_run(migration_thread, NULL, "migration_thread_%d", i);
+        thread_ids[i] = i;
+        migration_threads[i] = kthread_run(migration_thread, &thread_ids[i], "kmigration%d", i);
         if (IS_ERR(migration_threads[i])) {
             ERR("Failed to create migration thread %d\n", i);
             return PTR_ERR(migration_threads[i]);
