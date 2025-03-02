@@ -300,7 +300,11 @@ int get_target_demotion_node(int node, const nodemask_t *maskp) {
         // - memory type's migration cost
         // - memory type's migration latency
         // - memory type's migration bandwidth
+        #ifdef CONFIG_VTISM
         bit = find_best_demotion_node(node, maskp);
+        #else
+		bit = node_random(maskp);
+        #endif
 		break;
 	}
 	return bit;

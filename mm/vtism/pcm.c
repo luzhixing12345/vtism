@@ -2,6 +2,7 @@
 
 #include "pcm.h"
 
+#include "linux/export.h"
 #include "linux/kobject.h"
 #include "linux/memory-tiers.h"
 
@@ -38,6 +39,8 @@ int find_best_demotion_node(int node, const nodemask_t *maskp) {
     }
     return best_node;
 }
+
+EXPORT_SYMBOL(find_best_demotion_node);
 
 // 动态生成每个节点的读带宽显示
 static ssize_t node_read_bw_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
