@@ -21,6 +21,7 @@
 
 #include <linux/module.h>
 #include <linux/mm.h>
+#include <linux/mempolicy.h>
 #include <linux/swap.h>
 #include <linux/slab.h>
 #include <linux/sysctl.h>
@@ -2132,6 +2133,15 @@ static struct ctl_table vm_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= SYSCTL_ZERO,
+	},
+    {
+		.procname	= "numa_tier_interleave",
+		.data		= &numa_tier_interleave,
+		.maxlen		= sizeof(numa_tier_interleave),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE_HUNDRED,
 	},
 #else
 	{
