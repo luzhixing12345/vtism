@@ -54,7 +54,7 @@ struct mempolicy {
 	} w;
 };
 
-extern int numa_tier_interleave[4];
+extern unsigned int numa_tier_interleave[4];
 
 /*
  * Support for managing mempolicy data objects (clone, copy, destroy)

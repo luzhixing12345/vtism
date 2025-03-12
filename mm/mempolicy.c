@@ -68,8 +68,7 @@
    kernel is not always grateful with that.
 */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
+#include "linux/random.h"
 #include <linux/mempolicy.h>
 #include <linux/pagewalk.h>
 #include <linux/highmem.h>
@@ -122,7 +121,7 @@ enum zone_type policy_zone = 0;
 
 /* Toptier:lowtier interleaving ratio */
 // https://lore.kernel.org/linux-mm/YqD0%2FtzFwXvJ1gK6@cmpxchg.org/T/
-int numa_tier_interleave[4] = { 0, 0,0, 0 };
+unsigned int numa_tier_interleave[4] = { 0, 0,0, 0 };
 
 /*
  * run-time system-wide default policy => local allocation
@@ -887,7 +886,6 @@ static long do_set_mempolicy(unsigned short mode, unsigned short flags,
 	current->mempolicy = new;
 	if (new && new->mode == MPOL_INTERLEAVE) {
 		current->il_prev = MAX_NUMNODES-1;
-		current->il_count = 0;
 	}
 	task_unlock(current);
 	mpol_put(old);
@@ -1906,20 +1904,6 @@ static int policy_node(gfp_t gfp, struct mempolicy *policy, int nd)
 	return nd;
 }
 
-static unsigned next_node_tier(int nid, struct mempolicy *policy, bool toptier)
-{
-	unsigned next, start = nid;
-
-	do {
-		next = next_node_in(next, policy->nodes);
-		if (next == MAX_NUMNODES)
-			break;
-		if (toptier == node_is_toptier(next))
-			break;
-	} while (next != start);
-	return next;
-}
-
 /* Do dynamic interleaving for a process */
 static unsigned interleave_nodes(struct mempolicy *policy)
 {
@@ -1927,24 +1911,22 @@ static unsigned interleave_nodes(struct mempolicy *policy)
 	struct task_struct *me = current;
 
 	if (numa_tier_interleave[0] > 0 || numa_tier_interleave[1] > 0 || numa_tier_interleave[2] > 0 || numa_tier_interleave[3] > 0) {
+        int sum = numa_tier_interleave[0] + numa_tier_interleave[1] + numa_tier_interleave[2] + numa_tier_interleave[3];
+        u32 random_num = get_random_u32() % sum;
 		/*
 		 * When N:M interleaving is configured, allocate N
 		 * pages over toptier nodes first, then the remainder
 		 * on lowtier ones.
 		 */
-		if (me->il_count < numa_tier_interleave[0])
+		if (random_num < numa_tier_interleave[0])
 			next = 0;
-		else if (me->il_count < numa_tier_interleave[0] + numa_tier_interleave[1]) {
+		else if (random_num < numa_tier_interleave[0] + numa_tier_interleave[1]) {
             next = 1;
-        } else if (me->il_count < numa_tier_interleave[0] + numa_tier_interleave[1] + numa_tier_interleave[2]) {
+        } else if (random_num < numa_tier_interleave[0] + numa_tier_interleave[1] + numa_tier_interleave[2]) {
             next = 2;
         } else {
             next = 3;
         }
-		me->il_count++;
-		if (me->il_count >=
-		    numa_tier_interleave[0] + numa_tier_interleave[1] + numa_tier_interleave[2] + numa_tier_interleave[3])
-			me->il_count = 0;
 	} else {
 		next = next_node_in(me->il_prev, policy->nodes);
 	}

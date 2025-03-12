@@ -280,6 +280,8 @@ void node_get_allowed_targets(pg_data_t *pgdat, nodemask_t *targets)
 	rcu_read_unlock();
 }
 
+extern bool vtism_enable;
+
 int get_target_demotion_node(int node, const nodemask_t *maskp) {
 #if defined(CONFIG_NUMA) && (MAX_NUMNODES > 1)
 	int w, bit;
@@ -300,11 +302,11 @@ int get_target_demotion_node(int node, const nodemask_t *maskp) {
         // - memory type's migration cost
         // - memory type's migration latency
         // - memory type's migration bandwidth
-        #ifdef CONFIG_VTISM
-        bit = find_best_demotion_node(node, maskp);
-        #else
-		bit = node_random(maskp);
-        #endif
+        if (vtism_enable) {
+            bit = find_best_demotion_node(node, maskp);
+        } else {
+            bit = node_random(maskp);
+        }
 		break;
 	}
 	return bit;

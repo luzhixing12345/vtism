@@ -18,6 +18,7 @@ int find_best_demotion_node(int node, const nodemask_t *maskp) {
     int target_node;
     int best_node = -1;
     int best_score = INT_MAX;
+    pr_info("find best demotion node for node %d, mask %p", node, maskp);
     /* 遍历 mask 中的每个候选节点 */
     for_each_node_mask(target_node, *maskp) {
         /* 排除自己 */
@@ -32,11 +33,17 @@ int find_best_demotion_node(int node, const nodemask_t *maskp) {
             continue;
         }
         int score = effective_latency + effective_bw;
+        pr_info("Node %d: latency=%d, bw=%d, free_ratio=%d%%, score=%d\n", target_node, effective_latency, effective_bw, free_ratio, score);
         if (score < best_score) {
             best_score = score;
             best_node = target_node;
         }
     }
+    if (best_score == 0) {
+        // node_info_data is not initialized yet
+        return node_random(maskp);
+    }
+    pr_info("node %d best demotion node: %d\n", node, best_node);
     return best_node;
 }
 
