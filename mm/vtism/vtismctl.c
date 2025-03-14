@@ -119,7 +119,24 @@ static ssize_t enable_store(struct kobject *kobj, struct kobj_attribute *attr, c
     }
     return count;
 }
+
 struct kobj_attribute vtism_enable_attr;
+
+extern int migration_thread_num;
+static struct kobj_attribute vtism_migration_thread_num_attr;
+
+static ssize_t migration_thread_num_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+    return sysfs_emit(buf, "%d\n", migration_thread_num);
+}
+
+static ssize_t migration_thread_num_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+    int new_val;
+    if (kstrtoint(buf, 10, &new_val) == -EINVAL) {
+        return -EINVAL;
+    }
+    migration_thread_num = new_val;
+    return count;
+}
 
 /*
 kernel system interface for vtism (/sys/kernel/mm/vtism)
@@ -147,6 +164,18 @@ int vtismctl_init(void) {
     err = sysfs_create_file(vtism_kobj, &vtism_enable_attr.attr);
     if (err) {
         pr_err("failed to create enable file\n");
+        goto delete_obj;
+    }
+
+    // init vtism migration_thread_num sysfs interface
+    sysfs_attr_init(&vtism_migration_thread_num_attr.attr);
+    vtism_migration_thread_num_attr.attr.name = "migration_thread_num";
+    vtism_migration_thread_num_attr.attr.mode = 0666;
+    vtism_migration_thread_num_attr.show = migration_thread_num_show;
+    vtism_migration_thread_num_attr.store = migration_thread_num_store;
+    err = sysfs_create_file(vtism_kobj, &vtism_migration_thread_num_attr.attr);
+    if (err) {
+        pr_err("failed to create migration_thread_num file\n");
         goto delete_obj;
     }
 
