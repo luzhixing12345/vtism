@@ -1649,6 +1649,7 @@ static struct folio *alloc_demote_folio(struct folio *src,
 static unsigned int demote_folio_list(struct list_head *demote_folios,
 				     struct pglist_data *pgdat)
 {
+    // *TODO*: 可以在降级之前判断一下是否是抖动的页面
 	int target_nid = next_demotion_node(pgdat->node_id);
 	unsigned int nr_succeeded;
 	nodemask_t allowed_mask;

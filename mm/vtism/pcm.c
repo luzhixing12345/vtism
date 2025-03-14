@@ -29,9 +29,9 @@ int find_best_demotion_node(int node, const nodemask_t *maskp) {
         int effective_latency = info->is_toptier ? info->latency : info->to_cxl_latency;
         int effective_bw = (info->read_bw + info->write_bw) / 2;
         int free_ratio = 100 * info->free_mem_size / info->total_mem_size;
-        if (free_ratio < 5) {
+        if (free_ratio < CONFIG_VTISM_NODE_MIN_FREE_RATIO) {
             continue;
-        }
+        } 
         int score = effective_latency + effective_bw;
         pr_info("Node %d: latency=%d, bw=%d, free_ratio=%d%%, score=%d\n", target_node, effective_latency, effective_bw, free_ratio, score);
         if (score < best_score) {

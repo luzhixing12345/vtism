@@ -22,4 +22,12 @@ config VTISM_MIGRATION_THREAD_NUM
         with a large number of NUMA nodes, but it also increases CPU usage.
         The valid range is between 1 and 128.
 
+config VTISM_NODE_MIN_FREE_RATIO
+    int "Minimum free memory ratio for a NUMA node"
+    default 5
+    range 1 100
+    help
+        Specify the minimum free memory ratio for a NUMA node to be eligible
+        for page migration. A higher ratio means that a node must have more
+
 endif # VTISM
