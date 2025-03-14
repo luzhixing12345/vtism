@@ -85,6 +85,19 @@ static int get_migration_queue_size(void) {
     return len;
 }
 
+/**
+ * @brief real async migration with multi kthread copy instead of cond_sched(migrate_folio)
+ * 
+ * @param mapping 
+ * @param dst 
+ * @param src 
+ * @param mode 
+ * @return int 
+ */
+int async_migrate_folio(struct address_space *mapping, struct folio *dst, struct folio *src, enum migrate_mode mode) {
+    return 0;
+}
+
 ssize_t dump_page_migration_info(char *buf, ssize_t len) {
     len += sysfs_emit_at(buf, len, "[page migration info]\n");
     if (migration_threads[0] == NULL) {

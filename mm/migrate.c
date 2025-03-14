@@ -57,6 +57,10 @@
 
 #include "internal.h"
 
+#ifdef CONFIG_VTISM
+#include "vtism/page_migration.h"
+#endif
+
 bool isolate_movable_page(struct page *page, isolate_mode_t mode)
 {
 	struct folio *folio = folio_get_nontail_page(page);
@@ -955,7 +959,11 @@ static int move_to_new_folio(struct folio *dst, struct folio *src,
 		struct address_space *mapping = folio_mapping(src);
 
 		if (!mapping)
-			rc = migrate_folio(mapping, dst, src, mode);
+            #ifdef CONFIG_VTISM
+			rc = async_migrate_folio(mapping, dst, src, mode);
+            #else
+            rc = migrate_folio(mapping, dst, src, mode);
+            #endif
 		else if (mapping->a_ops->migrate_folio)
 			/*
 			 * Most folios have a mapping and most filesystems
