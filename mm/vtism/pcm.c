@@ -2,7 +2,6 @@
 
 #include "pcm.h"
 
-#include "linux/export.h"
 #include "linux/kobject.h"
 #include "linux/memory-tiers.h"
 
@@ -13,8 +12,14 @@
 */
 
 static struct node_info *node_info_data;
+extern bool vtism_enable;
+extern int demotion_min_free_ratio;
+extern int promotion_min_free_ratio;
 
 int find_best_demotion_node(int node, const nodemask_t *maskp) {
+    if (!vtism_enable) {
+        return node_random(maskp);
+    }
     int target_node;
     int best_node = -1;
     int best_score = INT_MAX;
@@ -29,11 +34,16 @@ int find_best_demotion_node(int node, const nodemask_t *maskp) {
         int effective_latency = info->is_toptier ? info->latency : info->to_cxl_latency;
         int effective_bw = (info->read_bw + info->write_bw) / 2;
         int free_ratio = 100 * info->free_mem_size / info->total_mem_size;
-        if (free_ratio < CONFIG_VTISM_NODE_MIN_FREE_RATIO) {
+        if (free_ratio < demotion_min_free_ratio) {
             continue;
-        } 
+        }
         int score = effective_latency + effective_bw;
-        pr_info("Node %d: latency=%d, bw=%d, free_ratio=%d%%, score=%d\n", target_node, effective_latency, effective_bw, free_ratio, score);
+        pr_info("Node %d: latency=%d, bw=%d, free_ratio=%d%%, score=%d\n",
+                target_node,
+                effective_latency,
+                effective_bw,
+                free_ratio,
+                score);
         if (score < best_score) {
             best_score = score;
             best_node = target_node;
@@ -47,7 +57,27 @@ int find_best_demotion_node(int node, const nodemask_t *maskp) {
     return best_node;
 }
 
-EXPORT_SYMBOL(find_best_demotion_node);
+bool should_migrate_to_target_node(int page_nid, int target_nid) {
+    if (!vtism_enable) {
+        return false;
+    }
+    struct node_info *target_node_info = &node_info_data[target_nid];
+    // if target node doesn't have enough free memory, don't migrate
+    if (100 * target_node_info->free_mem_size / target_node_info->total_mem_size <
+        promotion_min_free_ratio) {
+        return false;
+    }
+
+    int target_score =
+        target_node_info->latency + (target_node_info->read_bw + target_node_info->write_bw) / 2;
+    int page_score = node_info_data[page_nid].latency +
+                     (node_info_data[page_nid].read_bw + node_info_data[page_nid].write_bw) / 2;
+    // if current node's latency and bandwidth is better than target node, don't migrate
+    if (target_score < page_score) {
+        return false;
+    }
+    return true;
+}
 
 // 动态生成每个节点的读带宽显示
 static ssize_t node_read_bw_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
@@ -56,7 +86,8 @@ static ssize_t node_read_bw_show(struct kobject *kobj, struct kobj_attribute *at
 }
 
 // 动态生成每个节点的读带宽设置
-static ssize_t node_read_bw_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+static ssize_t node_read_bw_store(struct kobject *kobj, struct kobj_attribute *attr,
+                                  const char *buf, size_t count) {
     struct node_info *data = container_of(attr, struct node_info, read_bw_attr);
     int ret = kstrtouint(buf, 10, &data->read_bw);
     if (ret < 0)
@@ -71,7 +102,8 @@ static ssize_t node_write_bw_show(struct kobject *kobj, struct kobj_attribute *a
 }
 
 // 动态生成每个节点的写带宽设置
-static ssize_t node_write_bw_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+static ssize_t node_write_bw_store(struct kobject *kobj, struct kobj_attribute *attr,
+                                   const char *buf, size_t count) {
     struct node_info *data = container_of(attr, struct node_info, write_bw_attr);
     int ret = kstrtouint(buf, 10, &data->write_bw);
     if (ret < 0)
@@ -85,7 +117,8 @@ static ssize_t node_latency_show(struct kobject *kobj, struct kobj_attribute *at
     return sysfs_emit(buf, "%u (ns)\n", data->latency);
 }
 
-static ssize_t node_latency_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+static ssize_t node_latency_store(struct kobject *kobj, struct kobj_attribute *attr,
+                                  const char *buf, size_t count) {
     struct node_info *data = container_of(attr, struct node_info, latency_attr);
     int ret = kstrtouint(buf, 10, &data->latency);
     if (ret < 0)
@@ -93,13 +126,14 @@ static ssize_t node_latency_store(struct kobject *kobj, struct kobj_attribute *a
     return count;
 }
 
-static ssize_t node_to_cxl_latency_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+static ssize_t node_to_cxl_latency_show(struct kobject *kobj, struct kobj_attribute *attr,
+                                        char *buf) {
     struct node_info *data = container_of(attr, struct node_info, to_cxl_latency_attr);
     return sysfs_emit(buf, "%u (ns)\n", data->to_cxl_latency);
 }
 
-static ssize_t node_to_cxl_latency_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf,
-                                         size_t count) {
+static ssize_t node_to_cxl_latency_store(struct kobject *kobj, struct kobj_attribute *attr,
+                                         const char *buf, size_t count) {
     struct node_info *data = container_of(attr, struct node_info, to_cxl_latency_attr);
     int ret = kstrtouint(buf, 10, &data->to_cxl_latency);
     if (ret < 0)

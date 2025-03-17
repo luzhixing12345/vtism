@@ -6,7 +6,7 @@ page_migrate-objs := page_migration.o
 
 sysctl-objs := vtismctl.o pcm.o
 
-vtism-objs := main.o $(sysctl-objs) workqueue.o $(page_classify-objs) $(page_migrate-objs)
+vtism-objs := main.o $(sysctl-objs) $(page_classify-objs) $(page_migrate-objs)
 
 EXTRA_CFLAGS += -Wno-unused-function
 

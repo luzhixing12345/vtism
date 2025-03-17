@@ -22,12 +22,20 @@ config VTISM_MIGRATION_THREAD_NUM
         with a large number of NUMA nodes, but it also increases CPU usage.
         The valid range is between 1 and 128.
 
-config VTISM_NODE_MIN_FREE_RATIO
-    int "Minimum free memory ratio for a NUMA node"
+config VTISM_DEMOTION_MIN_FREE_RATIO
+    int "Minimum free memory ratio for page demotion"
     default 5
     range 1 100
     help
-        Specify the minimum free memory ratio for a NUMA node to be eligible
-        for page migration. A higher ratio means that a node must have more
+        Specify the minimum free memory ratio for page demotion. which can
+        also change by /sys/kernel/mm/vtism/demotion_min_free_ratio
+
+config VTISM_PROMOTION_MIN_FREE_RATIO
+    int "Minimum free memory ratio for page promotion"
+    default 2
+    range 1 100
+    help
+        Specify the minimum free memory ratio for page promotion. which can
+        also change by /sys/kernel/mm/vtism/promotion_min_free_ratio
 
 endif # VTISM

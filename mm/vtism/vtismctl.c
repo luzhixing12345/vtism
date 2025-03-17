@@ -122,8 +122,12 @@ static ssize_t enable_store(struct kobject *kobj, struct kobj_attribute *attr, c
 
 struct kobj_attribute vtism_enable_attr;
 
-extern int migration_thread_num;
+int migration_thread_num = CONFIG_VTISM_MIGRATION_THREAD_NUM;
+int demotion_min_free_ratio = CONFIG_VTISM_DEMOTION_MIN_FREE_RATIO;
+int promotion_min_free_ratio = CONFIG_VTISM_PROMOTION_MIN_FREE_RATIO;
 static struct kobj_attribute vtism_migration_thread_num_attr;
+static struct kobj_attribute vtism_demotion_min_free_ratio_attr;
+static struct kobj_attribute vtism_promotion_min_free_ratio_attr;
 
 static ssize_t migration_thread_num_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
     return sysfs_emit(buf, "%d\n", migration_thread_num);
@@ -135,6 +139,32 @@ static ssize_t migration_thread_num_store(struct kobject *kobj, struct kobj_attr
         return -EINVAL;
     }
     migration_thread_num = new_val;
+    return count;
+}
+
+static ssize_t demotion_min_free_ratio_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+    return sysfs_emit(buf, "%d\n", demotion_min_free_ratio);
+}
+
+static ssize_t demotion_min_free_ratio_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+    int new_val;
+    if (kstrtoint(buf, 10, &new_val) == -EINVAL) {
+        return -EINVAL;
+    }
+    demotion_min_free_ratio = new_val;
+    return count;
+}
+
+static ssize_t promotion_min_free_ratio_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+    return sysfs_emit(buf, "%d\n", promotion_min_free_ratio);
+}
+
+static ssize_t promotion_min_free_ratio_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+    int new_val;
+    if (kstrtoint(buf, 10, &new_val) == -EINVAL) {
+        return -EINVAL;
+    }
+    promotion_min_free_ratio = new_val;
     return count;
 }
 
@@ -176,6 +206,28 @@ int vtismctl_init(void) {
     err = sysfs_create_file(vtism_kobj, &vtism_migration_thread_num_attr.attr);
     if (err) {
         pr_err("failed to create migration_thread_num file\n");
+        goto delete_obj;
+    }
+
+    sysfs_attr_init(&vtism_demotion_min_free_ratio_attr.attr);
+    vtism_demotion_min_free_ratio_attr.attr.name = "demotion_min_free_ratio";
+    vtism_demotion_min_free_ratio_attr.attr.mode = 0666;
+    vtism_demotion_min_free_ratio_attr.show = demotion_min_free_ratio_show;
+    vtism_demotion_min_free_ratio_attr.store = demotion_min_free_ratio_store;
+    err = sysfs_create_file(vtism_kobj, &vtism_demotion_min_free_ratio_attr.attr);
+    if (err) {
+        pr_err("failed to create demotion_min_free_ratio file\n");
+        goto delete_obj;
+    }
+
+    sysfs_attr_init(&vtism_promotion_min_free_ratio_attr.attr);
+    vtism_promotion_min_free_ratio_attr.attr.name = "promotion_min_free_ratio";
+    vtism_promotion_min_free_ratio_attr.attr.mode = 0666;
+    vtism_promotion_min_free_ratio_attr.show = promotion_min_free_ratio_show;
+    vtism_promotion_min_free_ratio_attr.store = promotion_min_free_ratio_store;
+    err = sysfs_create_file(vtism_kobj, &vtism_promotion_min_free_ratio_attr.attr);
+    if (err) {
+        pr_err("failed to create promotion_min_free_ratio file\n");
         goto delete_obj;
     }
 

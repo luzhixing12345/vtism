@@ -6,10 +6,7 @@
 #include <linux/uaccess.h>
 
 #include "common.h"
-#include "page_classify.h"
-#include "page_migration.h"
 #include "vtismctl.h"
-#include "workqueue.h"
 
 // 初始化模块
 static int __init vtism_init(void) {

@@ -19,8 +19,8 @@
 
 #include "common.h"
 
-int migration_thread_num = 4;  // 默认线程数量
-
+  // 默认线程数量
+extern int migration_thread_num;
 static struct task_struct **migration_threads;  // 动态分配的线程指针数组
 static int *thread_ids;
 
