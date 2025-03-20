@@ -59,6 +59,8 @@
 
 #ifdef CONFIG_VTISM
 #include "vtism/page_migration.h"
+#include "vtism/pcm.h"
+extern bool vtism_enable;
 #endif
 
 bool isolate_movable_page(struct page *page, isolate_mode_t mode)
@@ -960,7 +962,11 @@ static int move_to_new_folio(struct folio *dst, struct folio *src,
 
 		if (!mapping)
             #ifdef CONFIG_VTISM
-			rc = async_migrate_folio(mapping, dst, src, mode);
+            if (vtism_enable) {
+                rc = async_migrate_folio(mapping, dst, src, mode);
+            } else {
+                rc = migrate_folio(mapping, dst, src, mode);    
+            }
             #else
             rc = migrate_folio(mapping, dst, src, mode);
             #endif
@@ -2568,6 +2574,13 @@ int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
 	 */
 	if (page_is_file_lru(page) && PageDirty(page))
 		goto out;
+
+    #ifdef CONFIG_VTISM
+    // if target node latency and bandwidth is lower than current node, then don't migrate
+    if (!should_migrate_to_target_node(page_to_nid(page), node)) {
+        goto out;
+    }
+    #endif
 
 	isolated = numamigrate_isolate_page(pgdat, page);
 	if (!isolated)

@@ -76,6 +76,8 @@ bool should_migrate_to_target_node(int page_nid, int target_nid) {
     if (target_score < page_score) {
         return false;
     }
+    pr_info("target score = %d, page score = %d\n", target_score, page_score);
+    pr_info("choose not to migrate page from node %d to node %d\n", page_nid, target_nid);
     return true;
 }
 

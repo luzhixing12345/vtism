@@ -103,10 +103,6 @@ struct page *mem_map;
 EXPORT_SYMBOL(mem_map);
 #endif
 
-#ifdef CONFIG_VTISM
-#include "vtism/pcm.h"
-#endif
-
 static vm_fault_t do_fault(struct vm_fault *vmf);
 static vm_fault_t do_anonymous_page(struct vm_fault *vmf);
 static bool vmf_pte_changed(struct vm_fault *vmf);
@@ -4819,12 +4815,6 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 	}
 	pte_unmap_unlock(vmf->pte, vmf->ptl);
 	writable = false;
-
-    #ifdef CONFIG_VTISM
-    if (!should_migrate_to_target_node(page_nid, target_nid)) {
-        goto out;
-    }
-    #endif
 
 	/* Migrate to the requested node */
 	if (migrate_misplaced_page(page, vma, target_nid)) {
