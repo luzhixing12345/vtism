@@ -59,12 +59,15 @@ int find_best_demotion_node(int node, const nodemask_t *maskp) {
 
 bool should_migrate_to_target_node(int page_nid, int target_nid) {
     if (!vtism_enable) {
-        return false;
+        return true;
     }
     struct node_info *target_node_info = &node_info_data[target_nid];
     // if target node doesn't have enough free memory, don't migrate
     if (100 * target_node_info->free_mem_size / target_node_info->total_mem_size <
         promotion_min_free_ratio) {
+        pr_info("target node %d doesn't have enough free memory, ratio: %d\n",
+                target_nid,
+                100 * target_node_info->free_mem_size / target_node_info->total_mem_size);
         return false;
     }
 
@@ -74,10 +77,10 @@ bool should_migrate_to_target_node(int page_nid, int target_nid) {
                      (node_info_data[page_nid].read_bw + node_info_data[page_nid].write_bw) / 2;
     // if current node's latency and bandwidth is better than target node, don't migrate
     if (target_score < page_score) {
+        pr_info("target score = %d, page score = %d\n", target_score, page_score);
+        pr_info("choose not to migrate page from node %d to node %d\n", page_nid, target_nid);
         return false;
     }
-    pr_info("target score = %d, page score = %d\n", target_score, page_score);
-    pr_info("choose not to migrate page from node %d to node %d\n", page_nid, target_nid);
     return true;
 }
 
