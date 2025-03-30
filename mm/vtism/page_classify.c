@@ -199,7 +199,7 @@ int page_classify_init(void) {
         ERR("init_vm failed\n");
         return ret;
     }
-
+    INFO("init vm success\n");
     page_classify_thread = kthread_run(shm_read_data, NULL, "kclassify");
     if (IS_ERR(page_classify_thread)) {
         ERR("Failed to create page walk thread.\n");

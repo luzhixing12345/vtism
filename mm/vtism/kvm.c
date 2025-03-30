@@ -181,8 +181,10 @@ uint64_t gpa2hva(struct qemu_struct *qemu, uint64_t gpa) {
 ssize_t dump_vm_info(char *buf, ssize_t len) {
     len += sysfs_emit_at(buf, len, "[vm info]\n");
     if (!vtism_enable) {
-        len += sysfs_emit_at(buf, len, "not enable vtism qemu info, please run qemu first and enable vtism\n");
-        len += sysfs_emit_at(buf, len, "use \"echo 1 > /sys/kernel/mm/vtism/enable\" to get qemu info\n");
+        len += sysfs_emit_at(
+            buf, len, "not enable vtism qemu info, please run qemu first and enable vtism\n");
+        len += sysfs_emit_at(
+            buf, len, "use \"echo 1 > /sys/kernel/mm/vtism/enable\" to get qemu info\n");
     } else {
         len += sysfs_emit_at(buf, len, "qemu_num: %d\n", qemu_vm.qemu_num);
         for (int i = 0; i < qemu_vm.qemu_num; i++) {
@@ -200,11 +202,40 @@ ssize_t dump_vm_info(char *buf, ssize_t len) {
                                      memslots[i].page_count);
                 total_pages += memslots[i].page_count;
             }
-            len += sysfs_emit_at(buf, len, "  total pages: %llu [%lld GB]\n", total_pages, total_pages * 4 / 1024 / 1024);
+            len += sysfs_emit_at(buf,
+                                 len,
+                                 "  total pages: %llu [%lld GB]\n",
+                                 total_pages,
+                                 total_pages * 4 / 1024 / 1024);
         }
     }
     len += sysfs_emit_at(buf, len, "\n");
     return len;
+}
+
+int init_qemu(struct qemu_struct *qemu) {
+    int ret;
+    if ((ret = get_kvm_by_vpid(qemu->pid, &qemu->kvm, &qemu->shared_file) < 0)) {
+        ERR("get_kvm_by_vpid failed\n");
+        return ret;
+    }
+
+    if ((ret = get_kvm_ept(qemu)) < 0) {
+        kvm_put_kvm(qemu->kvm);
+        ERR("get_ept failed\n");
+        return ret;
+    }
+    show_ept(qemu);
+
+    if ((ret = get_ept_root(qemu)) < 0) {
+        kvm_put_kvm(qemu->kvm);
+        ERR("get_ept_root failed\n");
+        return ret;
+    }
+    qemu->pml_buffer = vmalloc(PML_BUFFER_LEN * sizeof(uint64_t));
+    qemu->pml_buffer_idx = 0;
+    INFO("init pml buffer with %lu bytes\n", PML_BUFFER_LEN * sizeof(uint64_t));
+    return ret;
 }
 
 int init_vm(void) {
@@ -226,33 +257,27 @@ int init_vm(void) {
 
     for (int i = 0; i < qemu_num; i++) {
         struct qemu_struct *qemu = &qemu_vm.qemu[i];
-        if ((ret = get_kvm_by_vpid(qemu->pid, &qemu->kvm, &qemu->shared_file) < 0)) {
-            ERR("get_kvm_by_vpid failed\n");
-            return ret;
-        }
-
-        if ((ret = get_kvm_ept(qemu)) < 0) {
-            kvm_put_kvm(qemu->kvm);
-            ERR("get_ept failed\n");
-            return ret;
-        }
-        show_ept(qemu);
-
-        if ((ret = get_ept_root(qemu)) < 0) {
-            kvm_put_kvm(qemu->kvm);
-            ERR("get_ept_root failed\n");
+        if ((ret = init_qemu(qemu)) < 0) {
+            ERR("init qemu[%d] failed\n", i);
             return ret;
         }
     }
-
+    
     return ret;
+}
+
+void destory_qemu(struct qemu_struct *qemu) {
+    kvm_put_kvm(qemu->kvm);
+    filp_close(qemu->shared_file, NULL);
+    vfree(qemu->pml_buffer);
+    qemu->pml_buffer = NULL;
+    qemu->pml_buffer_idx = 0;
 }
 
 int destory_vm(void) {
     for (int i = 0; i < qemu_vm.qemu_num; i++) {
         struct qemu_struct *qemu = &qemu_vm.qemu[i];
-        kvm_put_kvm(qemu->kvm);
-        filp_close(qemu->shared_file, NULL);
+        destory_qemu(qemu);
     }
     qemu_vm.qemu_num = 0;
     return 0;

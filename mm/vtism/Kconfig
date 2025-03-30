@@ -12,15 +12,12 @@ config VTISM_MODULE_SYM_EXPORT
         Allow the VTISM module to be compiled as a loadable kernel module. 
         This option is automatically enabled when VTISM is set to 'm'.
 
-config VTISM_MIGRATION_THREAD_NUM
-    int "Number of page migration helper threads"
-    default 4
-    range 1 128
+config VTISM_DEBUG
+    bool "Enable VTISM debug"
+    default n
+    depends on VTISM=y
     help
-        Specify the number of helper threads to assist in page migration.
-        A higher number of threads may improve migration speed on systems
-        with a large number of NUMA nodes, but it also increases CPU usage.
-        The valid range is between 1 and 128.
+        Enable VTISM debug.
 
 config VTISM_DEMOTION_MIN_FREE_RATIO
     int "Minimum free memory ratio for page demotion"

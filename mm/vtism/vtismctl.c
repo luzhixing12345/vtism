@@ -21,7 +21,12 @@
 #include "pcm.h"
 
 static struct kobject *vtism_kobj;
+
 bool vtism_enable = false;
+struct kobj_attribute vtism_enable_attr;
+
+bool vtism_migration_enable = false;
+struct kobj_attribute vtism_migration_enable_attr;
 
 struct demotion_nodes {
     nodemask_t target_demotion_nodes;
@@ -99,54 +104,62 @@ static ssize_t enable_show(struct kobject *kobj, struct kobj_attribute *attr, ch
     return sysfs_emit(buf, "%s\n", vtism_enable ? "true" : "false");
 }
 
-static ssize_t enable_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-    if (kstrtobool(buf, &vtism_enable) == -EINVAL) {
+static ssize_t enable_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf,
+                            size_t count) {
+    bool new_val;
+    if (kstrtobool(buf, &new_val) == -EINVAL) {
         return -EINVAL;
     }
 
-    if (vtism_enable) {
-        // if (page_classify_init() < 0) {
-        //     vtism_enable = false;
-        //     ERR("enable vtism failed, set vtism_enable to false\n");
-        // }
-        if (page_migration_init() < 0) {
-            vtism_enable = false;
-            ERR("enable vtism failed, set vtism_enable to false\n");
-        }
+    if (vtism_enable == false && new_val == true) {
+        vtism_enable = new_val;
+    } else if (vtism_enable == true && new_val == false) {
+        vtism_enable = new_val;
     } else {
-        // page_classify_exit();
-        page_migration_exit();
+        pr_err("vtism_enable is already %s\n", vtism_enable ? "true" : "false");
     }
     return count;
 }
 
-struct kobj_attribute vtism_enable_attr;
+static ssize_t migration_enable_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+    return sysfs_emit(buf, "%s\n", vtism_migration_enable ? "true" : "false");
+}
 
-int migration_thread_num = CONFIG_VTISM_MIGRATION_THREAD_NUM;
+static ssize_t migration_enable_store(struct kobject *kobj, struct kobj_attribute *attr,
+                                      const char *buf, size_t count) {
+    bool new_val;
+    if (kstrtobool(buf, &new_val) == -EINVAL) {
+        return -EINVAL;
+    }
+    if (vtism_migration_enable == false && new_val == true) {
+        if (page_migration_init() < 0) {
+            ERR("enable vtism migration failed\n");
+            return count;
+        }
+        vtism_migration_enable = new_val;
+        INFO("enable vtism page migration\n");
+    } else if (vtism_migration_enable == true && new_val == false) {
+        page_migration_exit();
+        vtism_migration_enable = new_val;
+        INFO("disable vtism page migration\n");
+    } else {
+        pr_err("vtism_migration_enable is already %s\n", vtism_migration_enable ? "true" : "false");
+    }
+    return count;
+}
+
 int demotion_min_free_ratio = CONFIG_VTISM_DEMOTION_MIN_FREE_RATIO;
 int promotion_min_free_ratio = CONFIG_VTISM_PROMOTION_MIN_FREE_RATIO;
-static struct kobj_attribute vtism_migration_thread_num_attr;
 static struct kobj_attribute vtism_demotion_min_free_ratio_attr;
 static struct kobj_attribute vtism_promotion_min_free_ratio_attr;
 
-static ssize_t migration_thread_num_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
-    return sysfs_emit(buf, "%d\n", migration_thread_num);
-}
-
-static ssize_t migration_thread_num_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
-    int new_val;
-    if (kstrtoint(buf, 10, &new_val) == -EINVAL) {
-        return -EINVAL;
-    }
-    migration_thread_num = new_val;
-    return count;
-}
-
-static ssize_t demotion_min_free_ratio_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+static ssize_t demotion_min_free_ratio_show(struct kobject *kobj, struct kobj_attribute *attr,
+                                            char *buf) {
     return sysfs_emit(buf, "%d\n", demotion_min_free_ratio);
 }
 
-static ssize_t demotion_min_free_ratio_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+static ssize_t demotion_min_free_ratio_store(struct kobject *kobj, struct kobj_attribute *attr,
+                                             const char *buf, size_t count) {
     int new_val;
     if (kstrtoint(buf, 10, &new_val) == -EINVAL) {
         return -EINVAL;
@@ -155,11 +168,13 @@ static ssize_t demotion_min_free_ratio_store(struct kobject *kobj, struct kobj_a
     return count;
 }
 
-static ssize_t promotion_min_free_ratio_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf) {
+static ssize_t promotion_min_free_ratio_show(struct kobject *kobj, struct kobj_attribute *attr,
+                                             char *buf) {
     return sysfs_emit(buf, "%d\n", promotion_min_free_ratio);
 }
 
-static ssize_t promotion_min_free_ratio_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count) {
+static ssize_t promotion_min_free_ratio_store(struct kobject *kobj, struct kobj_attribute *attr,
+                                              const char *buf, size_t count) {
     int new_val;
     if (kstrtoint(buf, 10, &new_val) == -EINVAL) {
         return -EINVAL;
@@ -190,22 +205,21 @@ int vtismctl_init(void) {
     vtism_enable_attr.attr.name = "enable";
     vtism_enable_attr.attr.mode = 0666;
     vtism_enable_attr.show = enable_show;
-    vtism_enable_attr.store = enable_store; // control vtism page classify and migrate
+    vtism_enable_attr.store = enable_store;  // control vtism page classify and migrate
     err = sysfs_create_file(vtism_kobj, &vtism_enable_attr.attr);
     if (err) {
         pr_err("failed to create enable file\n");
         goto delete_obj;
     }
 
-    // init vtism migration_thread_num sysfs interface
-    sysfs_attr_init(&vtism_migration_thread_num_attr.attr);
-    vtism_migration_thread_num_attr.attr.name = "migration_thread_num";
-    vtism_migration_thread_num_attr.attr.mode = 0666;
-    vtism_migration_thread_num_attr.show = migration_thread_num_show;
-    vtism_migration_thread_num_attr.store = migration_thread_num_store;
-    err = sysfs_create_file(vtism_kobj, &vtism_migration_thread_num_attr.attr);
+    sysfs_attr_init(&vtism_migration_enable_attr.attr);
+    vtism_migration_enable_attr.attr.name = "migration_enable";
+    vtism_migration_enable_attr.attr.mode = 0666;
+    vtism_migration_enable_attr.show = migration_enable_show;
+    vtism_migration_enable_attr.store = migration_enable_store;
+    err = sysfs_create_file(vtism_kobj, &vtism_migration_enable_attr.attr);
     if (err) {
-        pr_err("failed to create migration_thread_num file\n");
+        pr_err("failed to create migration_enable file\n");
         goto delete_obj;
     }
 

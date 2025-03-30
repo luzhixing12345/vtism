@@ -67,6 +67,10 @@
 #include "x86.h"
 #include "smm.h"
 
+#ifdef CONFIG_VTISM
+#include "vtism_kvm.h"
+#endif
+
 MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");
 
@@ -6189,6 +6193,7 @@ void vmx_flush_pml_buffer(struct kvm_vcpu *vcpu)
 		gpa = pml_buf[pml_idx];
 		WARN_ON(gpa & (PAGE_SIZE - 1));
 		kvm_vcpu_mark_page_dirty(vcpu, gpa >> PAGE_SHIFT);
+        get_pml_log(get_vm(vmx), gpa);
 	}
 
 	/* reset PML index */
