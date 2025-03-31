@@ -13,6 +13,7 @@
  * Christoph Lameter
  */
 
+#include "linux/migrate_mode.h"
 #include <linux/migrate.h>
 #include <linux/export.h>
 #include <linux/swap.h>
@@ -60,7 +61,6 @@
 #ifdef CONFIG_VTISM
 #include "vtism/page_migration.h"
 #include "vtism/pcm.h"
-extern bool vtism_enable;
 #endif
 
 bool isolate_movable_page(struct page *page, isolate_mode_t mode)
@@ -949,7 +949,7 @@ static int fallback_migrate_folio(struct address_space *mapping,
  *  MIGRATEPAGE_SUCCESS - success
  */
 static int move_to_new_folio(struct folio *dst, struct folio *src,
-				enum migrate_mode mode)
+				enum migrate_mode mode, enum migrate_reason reason)
 {
 	int rc = -EAGAIN;
 	bool is_lru = !__PageMovable(&src->page);
@@ -962,10 +962,10 @@ static int move_to_new_folio(struct folio *dst, struct folio *src,
 
 		if (!mapping)
             #ifdef CONFIG_VTISM
-            if (vtism_enable) {
-                rc = async_migrate_folio(mapping, dst, src, mode);
+            if(vtism_migration_enable && (reason == MR_NUMA_MISPLACED || reason == MR_DEMOTION)) {
+                rc = async_migrate_folio(mapping, dst, src, reason);
             } else {
-                rc = migrate_folio(mapping, dst, src, mode);    
+                rc = migrate_folio(mapping, dst, src, mode);
             }
             #else
             rc = migrate_folio(mapping, dst, src, mode);
@@ -1285,7 +1285,7 @@ static int migrate_folio_move(free_folio_t put_new_folio, unsigned long private,
 	prev = dst->lru.prev;
 	list_del(&dst->lru);
 
-	rc = move_to_new_folio(dst, src, mode);
+	rc = move_to_new_folio(dst, src, mode, reason);
 	if (rc)
 		goto out;
 
@@ -1440,7 +1440,7 @@ static int unmap_and_move_huge_page(new_folio_t get_new_folio,
 	}
 
 	if (!folio_mapped(src))
-		rc = move_to_new_folio(dst, src, mode);
+		rc = move_to_new_folio(dst, src, mode, reason);
 
 	if (page_was_mapped)
 		remove_migration_ptes(src,
@@ -1770,9 +1770,9 @@ move:
 
 			cond_resched();
 
-			rc = migrate_folio_move(put_new_folio, private,
-						folio, dst, mode,
-						reason, ret_folios);
+            rc = migrate_folio_move(put_new_folio, private,
+                folio, dst, mode,
+                reason, ret_folios);
 			/*
 			 * The rules are:
 			 *	Success: folio will be freed
