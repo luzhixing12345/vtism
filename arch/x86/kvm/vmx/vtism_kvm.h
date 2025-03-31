@@ -12,4 +12,5 @@
 
 void get_pml_log(struct qemu_struct *qemu, uint64_t gpa);
 struct qemu_struct *get_vm(struct vcpu_vmx *vmx);
+extern bool vtism_enable;
 #endif

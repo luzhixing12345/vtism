@@ -4,6 +4,10 @@
 
 #include "vtism_kvm.h"
 
+#define KB 1024
+#define MB (1024 * KB)
+#define GB (1024 * MB)
+
 // define in mm/vtism/kvm.c
 extern struct vm_context qemu_vm;
 
@@ -36,6 +40,46 @@ struct qemu_struct *get_vm(struct vcpu_vmx *vmx)
 	}
 	pr_err("get_vm: qemu not found\n");
 	return NULL;
+}
+
+static inline gfn_t gfn_to_index(gfn_t gfn, gfn_t base_gfn, int level)
+{
+	/* KVM_HPAGE_GFN_SHIFT(PT_PAGE_TABLE_LEVEL) must be 0. */
+	return (gfn >> KVM_HPAGE_GFN_SHIFT(level)) -
+		(base_gfn >> KVM_HPAGE_GFN_SHIFT(level));
+}
+
+
+inline int flush_ept_dirty_bit_by_gfn(struct qemu_struct *qemu, uint64_t gfn)
+{
+	uint64_t idx;
+	uint64_t *sptep;
+	int level;
+	struct kvm *kvm;
+	struct kvm_rmap_head *rmap_head;
+	struct kvm_memory_slot *slot;
+
+	kvm = qemu->kvm;
+	
+	slot = gfn_to_memslot(kvm, gfn);
+
+	if (slot == NULL) {
+		printk("slot is null\n");
+		return -1;
+	}
+    level = PT_PAGE_TABLE_LEVEL;
+	idx = gfn_to_index(gfn, slot->base_gfn, level);
+	rmap_head = &slot->arch.rmap[level - 1][idx];
+	sptep = (uint64_t *)(rmap_head->val);
+
+	if (sptep) {
+		if (((*sptep) & (1ull << 9)) != 0) {
+			(*sptep) = (*sptep) & (~(1ull << 9));
+		}
+		return 1;
+	}
+
+	return 0;
 }
 
 #endif
