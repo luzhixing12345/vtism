@@ -6187,18 +6187,12 @@ void vmx_flush_pml_buffer(struct kvm_vcpu *vcpu)
 		pml_idx++;
 
 	pml_buf = page_address(vmx->pml_pg);
-    pr_info("pml buf size: %d\n", PML_ENTITY_NUM - pml_idx);
 	for (; pml_idx < PML_ENTITY_NUM; pml_idx++) {
 		u64 gpa;
 
 		gpa = pml_buf[pml_idx];
 		WARN_ON(gpa & (PAGE_SIZE - 1));
 		kvm_vcpu_mark_page_dirty(vcpu, gpa >> PAGE_SHIFT);
-        #ifdef CONFIG_VTISM
-        if (vtism_enable) {
-            get_pml_log(get_vm(vmx), gpa);
-        }
-        #endif
 	}
 
 	/* reset PML index */

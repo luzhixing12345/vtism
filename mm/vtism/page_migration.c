@@ -46,6 +46,7 @@ void folio_migrate_memcpy(struct folio *dst, struct folio *src) {
 
     if (likely(src_addr && dst_addr)) {
         memcpy(dst_addr, src_addr, size);
+        // INFO("memcpy size = %zu\n", size);
     } else {
         // 回退到逐页复制
         ERR("still use copy_highpage to migrate folio\n");
@@ -67,13 +68,11 @@ void migration_work_func(struct work_struct *work) {
     enum migrate_reason reason = mwork->reason;
     void *dst_addr = folio_address(dst);
 
-    // INFO("[%s] Migrating folio %px -> %px on CPU %d (NUMA %d -> %d)\n",
-    //      reason == MR_DEMOTION ? "demote" : "promote",
-    //      src,
-    //      dst,
-    //      smp_processor_id(),
-    //      folio_to_nid(src),
-    //      folio_to_nid(dst));
+    INFO("[%s] Migrating folio on CPU %d (NUMA %d -> %d)\n",
+         reason == MR_DEMOTION ? "demote" : "promote",
+         smp_processor_id(),
+         folio_to_nid(src),
+         folio_to_nid(dst));
 
     // copy pages
     folio_migrate_memcpy(dst, src);
@@ -84,6 +83,7 @@ void migration_work_func(struct work_struct *work) {
         // INFO("Prefetching new page %px on CPU %d\n", dst_addr, smp_processor_id());
         prefetch(dst_addr);
     }
+    atomic_set(&mwork->done, 1);
 }
 
 /**
@@ -112,7 +112,7 @@ int async_migrate_folio(struct address_space *mapping, struct folio *dst, struct
     mwork->dst = dst;
     mwork->src = src;
     mwork->reason = reason;
-    // init_completion(&mwork->done);
+    atomic_set(&mwork->done, 0);
 
     int src_node = folio_to_nid(src);
     int dst_node = folio_to_nid(dst);
@@ -140,8 +140,9 @@ int async_migrate_folio(struct address_space *mapping, struct folio *dst, struct
         BUG();
     }
 
-    // wait_for_completion(&mwork->done);
-    // flush_work(&mwork->work);
+    while (!atomic_read(&mwork->done)) {
+        cond_resched();
+    }
     kfree(mwork);
     return MIGRATEPAGE_SUCCESS;
 }
@@ -167,17 +168,18 @@ int set_workqueue_numa_affinity(struct workqueue_struct *wq, int node) {
     // Set CPU mask to allow only CPUs on the specified NUMA node
     cpumask_clear(attrs->cpumask);  // Clear any existing CPUs
     const struct cpumask *cpus = cpumask_of_node(node);
+    
+    cpumask_or(attrs->cpumask, attrs->cpumask, cpus);
     int i;
-    for_each_cpu(i, cpus) {
+    for_each_cpu(i, attrs->cpumask) {
         INFO("CPU %d on node %d\n", i, node);
     }
-    cpumask_or(attrs->cpumask, attrs->cpumask, cpus);
 
     // Set affinity scope to NUMA
     attrs->affn_scope = WQ_AFFN_NUMA;
 
     // Optionally set affn_strict to true if you want strict affinity
-    attrs->affn_strict = true;
+    attrs->affn_strict = false;
     err = apply_workqueue_attrs(wq, attrs);
     if (err) {
         ERR("Failed to apply workqueue attrs for node %d\n", node);

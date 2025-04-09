@@ -9,6 +9,7 @@ struct migration_work {
     struct folio *src;
     struct folio *dst;
     enum migrate_reason reason;
+    atomic_t done;
 };
 
 #define MAX_NUMA_NODES 8
