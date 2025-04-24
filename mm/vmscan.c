@@ -71,6 +71,11 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/vmscan.h>
 
+// #ifdef CONFIG_VTISM
+// #include "vtism/vtismctl.h"
+// #include "vtism/kvm.h"
+// #endif
+
 struct scan_control {
 	/* How many pages shrink_list() should reclaim */
 	unsigned long nr_to_reclaim;
@@ -3563,6 +3568,14 @@ static bool should_skip_mm(struct mm_struct *mm, struct lru_gen_mm_walk *walk)
 	unsigned long size = 0;
 	struct pglist_data *pgdat = lruvec_pgdat(walk->lruvec);
 	int key = pgdat->node_id % BITS_PER_TYPE(mm->lru_gen.bitmap);
+    // #ifdef CONFIG_VTISM
+    // if (vtism_enable) {
+    //     // skip mm if vtism_enable is true and it is a vm mm
+    //     if (is_vm_mm(mm)) {
+    //         return true;
+    //     }
+    // } 
+    // #endif
 
 	if (!walk->force_scan && !test_bit(key, &mm->lru_gen.bitmap))
 		return true;

@@ -2575,12 +2575,12 @@ int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
 	if (page_is_file_lru(page) && PageDirty(page))
 		goto out;
 
-    #ifdef CONFIG_VTISM
-    // if target node latency and bandwidth is lower than current node, then don't migrate
-    if (!should_migrate_to_target_node(page_to_nid(page), node)) {
-        goto out;
-    }
-    #endif
+    // #ifdef CONFIG_VTISM
+    // // if target node latency and bandwidth is lower than current node, then don't migrate
+    // if (!should_migrate_to_target_node(page_to_nid(page), node)) {
+    //     goto out;
+    // }
+    // #endif
 
 	isolated = numamigrate_isolate_page(pgdat, page);
 	if (!isolated)

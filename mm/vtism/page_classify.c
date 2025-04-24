@@ -26,6 +26,7 @@
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
 #include <uapi/linux/sched/types.h>
+#include <linux/migrate.h>
 
 #include "common.h"
 #include "kvm.h"
@@ -33,13 +34,14 @@
 #include "linux/sysfs.h"
 
 // each qemu vm(32GB) needs a 64MB shared memory buffer
-#define BUFFER_SIZE (64 * MB)
+#define BUFFER_SIZE         (64 * MB)
+#define BASIC_SCAN_INTERVAL 2500
 
 void *pte_addr;
 uint64_t *last_ids;
 static struct task_struct *page_classify_thread = NULL;
 static struct hrtimer page_classify_hrtimer;
-static unsigned int thread_interval_ms = 5000;
+static u64 thread_interval_ms = BASIC_SCAN_INTERVAL;
 struct ivshmem_head {
     uint64_t id;
     uint64_t pte_num;
@@ -107,11 +109,12 @@ ssize_t dump_page_classify_info(char *buf, ssize_t len) {
 }
 
 int get_kvm_pages(void) {
+    // struct vm_area_struct vma = {};
     for (int i = 0; i < qemu_vm.qemu_num; i++) {
         struct qemu_struct *qemu = &qemu_vm.qemu[i];
         uint64_t *qemu_pte_addr = pte_addr + i * BUFFER_SIZE;
         if (qemu->pte_num) {
-            INFO("qemu[%d] pte_num: %llu\n", i, qemu->pte_num);
+            // INFO("qemu[%d] pte_num: %llu\n", i, qemu->pte_num);
             for (int j = 0; j < qemu->pte_num; j++) {
                 uint64_t hva = gfn_to_hva(qemu->kvm, gpa_to_gfn(qemu_pte_addr[j]));
                 if (kvm_is_error_hva(hva)) {
@@ -124,6 +127,11 @@ int get_kvm_pages(void) {
                     continue;
                 }
                 folio_mark_accessed(page_folio(page));
+                // int nid = page_to_nid(page);
+                // if (!node_is_toptier(nid)) {
+                //     int cpu = qemu->vcpu->cpu;
+                //     migrate_misplaced_page(page, &vma, cpu_to_node(cpu));
+                // }
                 put_page(page);
             }
         }
@@ -163,7 +171,10 @@ int shm_read_data(void *data) {
             }
             last_ids[i] = head.id;
             qemu->pte_num = head.pte_num;
-            INFO("qemu[%d] id: %lld, pte_num: %lld\n", i, head.id, head.pte_num);
+            INFO("qemu[%d] id: %lld, pte_num: %lld\n",
+                 i,
+                 head.id,
+                 head.pte_num);
             uint64_t pte_addr_size = head.pte_num * sizeof(pt_addr_t);
             if (pte_addr_size > BUFFER_SIZE) {
                 ERR("Buffer size is not enough.\n");
@@ -184,6 +195,30 @@ int shm_read_data(void *data) {
     return 0;
 }
 
+
+static void clear_shared_memory(void)
+{
+    void *zero_buf = vzalloc(BUFFER_SIZE);
+    if (!zero_buf) {
+        ERR("Failed to allocate zero buffer.\n");
+        return;
+    }
+
+    for (int i = 0; i < qemu_vm.qemu_num; i++) {
+        struct qemu_struct *qemu = &qemu_vm.qemu[i];
+        struct file *shared_file = qemu->shared_file;
+        loff_t pos = i * BUFFER_SIZE;
+        ssize_t written = kernel_write(shared_file, zero_buf, BUFFER_SIZE, &pos);
+        if (written < 0) {
+            ERR("Failed to zero out shared memory for qemu[%d]\n", i);
+        } else {
+            INFO("Cleared shared memory for qemu[%d], size: %zd bytes\n", i, written);
+        }
+    }
+
+    vfree(zero_buf);
+}
+
 static enum hrtimer_restart page_classify_hrtimer_fn(struct hrtimer *timer) {
     if (page_classify_thread)
         wake_up_process(page_classify_thread);
@@ -199,6 +234,7 @@ int page_classify_init(void) {
         ERR("init_vm failed\n");
         return ret;
     }
+    clear_shared_memory();
     INFO("init vm success\n");
     page_classify_thread = kthread_run(shm_read_data, NULL, "kclassify");
     if (IS_ERR(page_classify_thread)) {

@@ -20,12 +20,9 @@ struct qemu_struct {
 	struct kvm_ept_memslot *memslots; // the array of slots
 	size_t count; // the actual count of the array
 	pid_t pid;
+    // struct task_struct *task;
 	struct file *shared_file;
 	uint64_t pte_num;
-
-    bool start_log;
-	uint64_t *pml_buffer;
-	uint64_t pml_buffer_idx;
 };
 
 #define MAX_QEMU_VM 32

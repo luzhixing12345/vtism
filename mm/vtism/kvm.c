@@ -47,7 +47,8 @@ static int get_kvm_by_vpid(pid_t nr, struct kvm **kvmp, struct file **shared_fil
         if (strncmp(fname, "/dev/shm", 8) == 0) {
             // open the shared memory file
             // DON'T use shared_file = file because guest vm could exit at any time
-            shared_file = filp_open(fname, O_RDONLY, 0);
+            shared_file = filp_open(fname, O_RDWR, 0);
+            INFO("shared file path is %s\n", fname);
         }
     }
     rcu_read_unlock();
@@ -149,7 +150,7 @@ static void show_ept(struct qemu_struct *qemu) {
     INFO("total pages: %llu [%lld GB]\n", total_pages, total_pages * 4 / 1024 / 1024);
 }
 
-static int get_qemu_pid(void) {
+static int get_qemu_vms(void) {
     struct task_struct *task;
     int qemu_num = 0;
     for_each_process(task) {
@@ -158,7 +159,9 @@ static int get_qemu_pid(void) {
             if (qemu_num >= MAX_QEMU_VM) {
                 return -1;
             }
-            qemu_vm.qemu[qemu_num++].pid = task->pid;
+            qemu_vm.qemu[qemu_num].pid = task->pid;
+            // qemu_vm.qemu[qemu_num].task = task;
+            qemu_num++;
         }
     }
     qemu_vm.qemu_num = qemu_num;
@@ -213,6 +216,18 @@ ssize_t dump_vm_info(char *buf, ssize_t len) {
     return len;
 }
 
+// bool is_vm_mm(struct mm_struct *mm) {
+//     for (int i = 0; i < qemu_vm.qemu_num; i++) {
+//         struct mm_struct *task_mm = get_task_mm(qemu_vm.qemu[i].task);
+//         if (task_mm == mm) {
+//             mmput(task_mm);
+//             INFO("skip scan for qemu vm [%d]: %d\n", i, qemu_vm.qemu[i].pid);
+//             return true;
+//         }
+//     }
+//     return false;
+// }
+
 int init_qemu(struct qemu_struct *qemu) {
     int ret;
     if ((ret = get_kvm_by_vpid(qemu->pid, &qemu->kvm, &qemu->shared_file) < 0)) {
@@ -232,16 +247,16 @@ int init_qemu(struct qemu_struct *qemu) {
         ERR("get_ept_root failed\n");
         return ret;
     }
-    qemu->pml_buffer = vmalloc(PML_BUFFER_LEN * sizeof(uint64_t));
-    qemu->pml_buffer_idx = 0;
-    INFO("init pml buffer with %lu bytes\n", PML_BUFFER_LEN * sizeof(uint64_t));
+    // qemu->pml_buffer = vmalloc(PML_BUFFER_LEN * sizeof(uint64_t));
+    // qemu->pml_buffer_idx = 0;
+    // INFO("init pml buffer with %lu bytes\n", PML_BUFFER_LEN * sizeof(uint64_t));
     return ret;
 }
 
 int init_vm(void) {
     // uint64_t *ept_root = kvm_struct->ept_root;
     int ret;
-    int qemu_num = get_qemu_pid();
+    int qemu_num = get_qemu_vms();
     if (qemu_num == 0) {
         ERR("no qemu process found\n");
         return -ESRCH;
@@ -262,16 +277,13 @@ int init_vm(void) {
             return ret;
         }
     }
-    
+
     return ret;
 }
 
 void destory_qemu(struct qemu_struct *qemu) {
     kvm_put_kvm(qemu->kvm);
     filp_close(qemu->shared_file, NULL);
-    vfree(qemu->pml_buffer);
-    qemu->pml_buffer = NULL;
-    qemu->pml_buffer_idx = 0;
 }
 
 int destory_vm(void) {

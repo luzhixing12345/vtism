@@ -4,14 +4,14 @@
 
 #include "linux/kobject.h"
 #include "linux/memory-tiers.h"
-
+#include "vtismctl.h"
 /*
 -----------------------
         PCM
 -----------------------
 */
 
-static struct node_info *node_info_data;
+struct node_info *node_info_data;
 extern bool vtism_enable;
 extern int demotion_min_free_ratio;
 extern int promotion_min_free_ratio;
@@ -22,8 +22,9 @@ int find_best_demotion_node(int node, const nodemask_t *maskp) {
     }
     int target_node;
     int best_node = -1;
-    int best_score = INT_MAX;
-    pr_info("find best demotion node for node %d, mask %p", node, maskp);
+    // int best_score = INT_MAX;
+    update_numa_mem();
+    // pr_info("find best demotion node for node %d, mask %p", node, maskp);
     /* 遍历 mask 中的每个候选节点 */
     for_each_node_mask(target_node, *maskp) {
         /* 排除自己 */
@@ -31,29 +32,30 @@ int find_best_demotion_node(int node, const nodemask_t *maskp) {
             continue;
 
         struct node_info *info = &node_info_data[target_node];
-        int effective_latency = info->is_toptier ? info->latency : info->to_cxl_latency;
-        int effective_bw = (info->read_bw + info->write_bw) / 2;
+        // int effective_latency = info->is_toptier ? info->latency : info->to_cxl_latency;
+        // int effective_bw = (info->read_bw + info->write_bw) / 2;
         int free_ratio = 100 * info->free_mem_size / info->total_mem_size;
         if (free_ratio < demotion_min_free_ratio) {
             continue;
         }
-        int score = effective_latency + effective_bw;
-        pr_info("Node %d: latency=%d, bw=%d, free_ratio=%d%%, score=%d\n",
-                target_node,
-                effective_latency,
-                effective_bw,
-                free_ratio,
-                score);
-        if (score < best_score) {
-            best_score = score;
-            best_node = target_node;
-        }
+        best_node = target_node;
+        // int score = effective_latency + effective_bw;
+        // pr_info("Node %d: latency=%d, bw=%d, free_ratio=%d%%, score=%d\n",
+        //         target_node,
+        //         effective_latency,
+        //         effective_bw,
+        //         free_ratio,
+        //         score);
+        // if (score < best_score) {
+        //     best_score = score;
+        //     best_node = target_node;
+        // }
     }
-    if (best_score == 0) {
+    if (best_node == -1) {
         // node_info_data is not initialized yet
         return node_random(maskp);
     }
-    pr_info("node %d best demotion node: %d\n", node, best_node);
+    // pr_info("node %d best demotion node: %d\n", node, best_node);
     return best_node;
 }
 

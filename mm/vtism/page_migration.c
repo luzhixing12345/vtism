@@ -68,11 +68,11 @@ void migration_work_func(struct work_struct *work) {
     enum migrate_reason reason = mwork->reason;
     void *dst_addr = folio_address(dst);
 
-    INFO("[%s] Migrating folio on CPU %d (NUMA %d -> %d)\n",
-         reason == MR_DEMOTION ? "demote" : "promote",
-         smp_processor_id(),
-         folio_to_nid(src),
-         folio_to_nid(dst));
+    // INFO("[%s] Migrating folio on CPU %d (NUMA %d -> %d)\n",
+    //      reason == MR_DEMOTION ? "demote" : "promote",
+    //      smp_processor_id(),
+    //      folio_to_nid(src),
+    //      folio_to_nid(dst));
 
     // copy pages
     folio_migrate_memcpy(dst, src);

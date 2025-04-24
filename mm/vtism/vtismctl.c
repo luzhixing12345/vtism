@@ -22,11 +22,13 @@
 
 static struct kobject *vtism_kobj;
 
-bool vtism_enable = false;
+bool vtism_enable __read_mostly = false;
 struct kobj_attribute vtism_enable_attr;
 
-bool vtism_migration_enable = false;
+bool vtism_migration_enable __read_mostly = false;
 struct kobj_attribute vtism_migration_enable_attr;
+
+extern struct node_info *node_info_data;
 
 struct demotion_nodes {
     nodemask_t target_demotion_nodes;
@@ -50,6 +52,32 @@ ssize_t dump_demotion_pretarget(char *buf) {
     }
     len += sysfs_emit_at(buf, len, "\n");
     return len;
+}
+
+void update_numa_mem(void) {
+    int nid;
+    // 遍历所有 NUMA 节点
+    for_each_online_node(nid) {
+        struct pglist_data *pgdat = NODE_DATA(nid);
+        struct node_info *info = &node_info_data[nid];
+        unsigned long total_pages = 0;
+        unsigned long free_pages = 0;
+
+        // 遍历该节点的所有 zones
+        for (int zid = 0; zid < MAX_NR_ZONES; zid++) {
+            struct zone *zone = pgdat->node_zones + zid;
+
+            // 跳过无效或未初始化的 zone
+            if (!populated_zone(zone))
+                continue;
+
+            // 获取 total 和 free 页面数
+            total_pages += atomic_long_read(&zone->managed_pages);
+            free_pages += zone_page_state(zone, NR_FREE_PAGES);
+        }
+        info->free_mem_size = free_pages;
+        info->total_mem_size = total_pages;
+    }
 }
 
 static ssize_t dump_node_mem_info(char *buf, ssize_t len) {
@@ -112,8 +140,10 @@ static ssize_t enable_store(struct kobject *kobj, struct kobj_attribute *attr, c
     }
 
     if (vtism_enable == false && new_val == true) {
+        page_classify_init();
         vtism_enable = new_val;
     } else if (vtism_enable == true && new_val == false) {
+        page_classify_exit();
         vtism_enable = new_val;
     } else {
         pr_err("vtism_enable is already %s\n", vtism_enable ? "true" : "false");
