@@ -120,7 +120,7 @@ static ssize_t dump_show(struct kobject *kobj, struct kobj_attribute *attr, char
     ssize_t len = dump_demotion_pretarget(buf);
     len = dump_vm_info(buf, len);
     len = dump_node_mem_info(buf, len);
-    len = dump_node_bw_lat_info(buf, len);
+    // len = dump_node_bw_lat_info(buf, len);
     len = dump_page_classify_info(buf, len);
     len = dump_page_migration_info(buf, len);
     return len;
@@ -179,9 +179,7 @@ static ssize_t migration_enable_store(struct kobject *kobj, struct kobj_attribut
 }
 
 int demotion_min_free_ratio = CONFIG_VTISM_DEMOTION_MIN_FREE_RATIO;
-int promotion_min_free_ratio = CONFIG_VTISM_PROMOTION_MIN_FREE_RATIO;
 static struct kobj_attribute vtism_demotion_min_free_ratio_attr;
-static struct kobj_attribute vtism_promotion_min_free_ratio_attr;
 
 static ssize_t demotion_min_free_ratio_show(struct kobject *kobj, struct kobj_attribute *attr,
                                             char *buf) {
@@ -195,21 +193,6 @@ static ssize_t demotion_min_free_ratio_store(struct kobject *kobj, struct kobj_a
         return -EINVAL;
     }
     demotion_min_free_ratio = new_val;
-    return count;
-}
-
-static ssize_t promotion_min_free_ratio_show(struct kobject *kobj, struct kobj_attribute *attr,
-                                             char *buf) {
-    return sysfs_emit(buf, "%d\n", promotion_min_free_ratio);
-}
-
-static ssize_t promotion_min_free_ratio_store(struct kobject *kobj, struct kobj_attribute *attr,
-                                              const char *buf, size_t count) {
-    int new_val;
-    if (kstrtoint(buf, 10, &new_val) == -EINVAL) {
-        return -EINVAL;
-    }
-    promotion_min_free_ratio = new_val;
     return count;
 }
 
@@ -264,22 +247,11 @@ int vtismctl_init(void) {
         goto delete_obj;
     }
 
-    sysfs_attr_init(&vtism_promotion_min_free_ratio_attr.attr);
-    vtism_promotion_min_free_ratio_attr.attr.name = "promotion_min_free_ratio";
-    vtism_promotion_min_free_ratio_attr.attr.mode = 0666;
-    vtism_promotion_min_free_ratio_attr.show = promotion_min_free_ratio_show;
-    vtism_promotion_min_free_ratio_attr.store = promotion_min_free_ratio_store;
-    err = sysfs_create_file(vtism_kobj, &vtism_promotion_min_free_ratio_attr.attr);
-    if (err) {
-        pr_err("failed to create promotion_min_free_ratio file\n");
-        goto delete_obj;
-    }
-
-    err = register_pcm_sysctl(vtism_kobj);
-    if (err) {
-        pr_err("failed to register pcm group\n");
-        goto delete_obj;
-    }
+    // err = register_pcm_sysctl(vtism_kobj);
+    // if (err) {
+    //     pr_err("failed to register pcm group\n");
+    //     goto delete_obj;
+    // }
 
     return 0;
 delete_obj:

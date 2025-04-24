@@ -28,4 +28,4 @@ ssize_t dump_node_bw_lat_info(char *buf, ssize_t len);
 int register_pcm_sysctl(struct kobject *vtism_kobj);
 void unregister_pcm_sysctl(void);
 int find_best_demotion_node(int node, const nodemask_t *maskp);
-bool should_migrate_to_target_node(int page_nid, int target_nid);
+// bool should_migrate_to_target_node(int page_nid, int target_nid);
