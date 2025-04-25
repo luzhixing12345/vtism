@@ -5,6 +5,8 @@ source code for vtism: Toward Efficient Tiered Memory Management for Virtual Mac
 
 this repo contains the main source code of vtism kernel(modified from v6.6), and all the benchmark code, result log, draw python scripts and test programs are in [vtism-workspace]() repository, if you want to reproduce our work please follow the instruction from that repo
 
+> vtism-workspace is private temporarily, we will open source it later
+
 ## Prerequisites
 
 ### Software requirements
