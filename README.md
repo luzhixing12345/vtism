@@ -3,9 +3,7 @@
 
 source code for vtism: Toward Efficient Tiered Memory Management for Virtual Machines with CXL
 
-this repo contains the main source code of vtism kernel, and all the benchmark code, result log, draw python scripts are in [vtism-workspace]() repository, if you want to reproduce our work please follow the instruction from that repo
-
-> vtism-workspace is private temporarily
+this repo contains the main source code of vtism kernel(modified from v6.6), and all the benchmark code, result log, draw python scripts and test programs are in [vtism-workspace](https://anonymous.4open.science/r/vtism-workspace) repository, if you want to reproduce our work please follow the instruction from that repo
 
 ## Prerequisites
 
