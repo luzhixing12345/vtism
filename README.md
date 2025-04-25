@@ -3,7 +3,7 @@
 
 source code for vtism: Toward Efficient Tiered Memory Management for Virtual Machines with CXL
 
-this repo contains the main source code of vtism kernel(modified from v6.6), and all the benchmark code, result log, draw python scripts and test programs are in [vtism-workspace](https://anonymous.4open.science/r/vtism-workspace) repository, if you want to reproduce our work please follow the instruction from that repo
+this repo contains the main source code of vtism kernel(modified from v6.6), and all the benchmark code, result log, draw python scripts and test programs are in [vtism-workspace]() repository, if you want to reproduce our work please follow the instruction from that repo
 
 ## Prerequisites
 
@@ -182,3 +182,13 @@ $ echo 1 > /sys/kernel/mm/vtism/migration_enable
 ---
 
 `demotion_min_free_ratio`(default 5) means demote target node should have more than demotion_min_free_ratio% free memory space
+
+## How to use vtism
+
+```bash
+# start a qemu vm
+echo 1 > /sys/kernel/mm/vtism/enable
+echo 1 > /sys/kernel/mm/vtism/migration_enable
+```
+
+that's all
